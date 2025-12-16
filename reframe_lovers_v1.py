@@ -58,7 +58,7 @@ st.session_state.setdefault('player_name', 'あなた')
 st.session_state.setdefault('confidence_level', 1)
 st.session_state.setdefault('conversation_history', []) 
 st.session_state.setdefault('favor_ryo', 50)
-st.session_state.setdefault('uploaded_image_data', None) # このデータは使わなくなります
+st.session_state.setdefault('uploaded_image_data', None) 
 st.session_state.setdefault(
     'conversation_theme', 
     "金曜日の終業間際、オフィスの休憩スペースにて。主人公は、自分が担当した重要資料に**致命的なデータミスを発見**し、報告するか黙って修正するか迷っている。氷室は、主人公が資料を前に押し黙っていることに気づき、声をかける。"
@@ -171,7 +171,7 @@ st.set_page_config(layout="centered", page_title=get_text("TITLE"))
 st.title(get_text("TITLE"))
 
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
-    
+    # --- 最初の設定画面 (START/DIARY_LOADED) のロジックは省略 ---
     LANGUAGES = {"JA": "日本語", "EN": "English"}
     st.session_state['game_language'] = st.selectbox(
         get_text("LANG_SELECT"), 
@@ -253,20 +253,18 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
 # --- 会話画面のレンダリング ---
 
 def render_conversation_ui():
-    """ゲームの会話画面をレンダリングする (画像アップローダー削除＆コンパクト版)"""
+    """ゲームの会話画面をレンダリングする (ステータス横並びコンパクト版)"""
     
     st.markdown("## 🏢 第1話: エースの葛藤")
     st.markdown(f"目標: まずは氷室と壁を取り払おう。現在の自信ゲージ (Confidence): Lv.{st.session_state['confidence_level']}")
     st.markdown("---")
     
-    # 画像のコラムを小さくする (例: 1.0 -> 0.7)
     col_img, col_choices = st.columns([1.0, 1.0])
     
     with col_img:
         st.markdown("### 👤 氷室涼")
         
-        # 🚨 修正点: 画像アップローダーを削除し、デバッグ用のプレースホルダーに置き換え 🚨
-        # --- プレースホルダー画像表示エリア (画像は表示しない) ---
+        # プレースホルダー画像表示エリア
         st.markdown(
             """
             <div style="height: 150px; background-color: #e0e0e0; 
@@ -278,13 +276,17 @@ def render_conversation_ui():
             """,
             unsafe_allow_html=True
         )
-        # -----------------------------------------------------------------
-
-        # 好感度と自信レベルを画像の下に配置 (コンパクトに表示)
-        st.markdown("---")
-        st.markdown("### 📈 ステータス")
-        st.markdown(f"❤️ **好感度**: **{st.session_state['favor_ryo']}** / 100")
-        st.markdown(f"✨ **自信レベル**: **{st.session_state.get('confidence_level', 1)}** / 3")
+        
+        # 🚨 修正点: 好感度と自信レベルを横並びでコンパクトに配置 🚨
+        col_favor, col_conf = st.columns(2)
+        
+        with col_favor:
+            st.markdown(f"❤️ **好感度**: **{st.session_state['favor_ryo']}**")
+        
+        with col_conf:
+            st.markdown(f"✨ **自信レベル**: **{st.session_state.get('confidence_level', 1)}** / 3")
+        
+        st.markdown("---") # ログとの区切りのため
 
 
     with col_choices:
@@ -318,12 +320,12 @@ def render_conversation_ui():
     st.markdown("---")
     st.markdown("### 💬 氷室の会話ログ")
     
-    # CSSをコンパクトに再設定 (高さ150pxに変更)
+    # CSSをコンパクトに再設定 
     st.markdown(
         """
         <style>
             .dialog-box {
-                height: 150px; /* 高さを縮小 */
+                height: 150px; 
                 overflow-y: auto; 
                 border: 2px solid #333333; 
                 background-color: #f0f0f0; 
@@ -339,7 +341,6 @@ def render_conversation_ui():
     log_content = "<div class='dialog-box'>"
     
     for turn in st.session_state['conversation_history']:
-        # HTMLでセリフを構築。
         log_content += f"<b>{turn['character_name']}</b>:<br>"
         log_content += f"{turn['character_speech']}<br>"
         log_content += "<hr style='margin: 5px 0; border-color: #aaaaaa;'>"
