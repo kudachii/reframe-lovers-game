@@ -8,7 +8,7 @@ import time
 import os 
 
 # ----------------------------------------------------
-# 1. 多言語対応とセッションステートの初期化 (省略)
+# 1. 多言語対応とセッションステートの初期化 (変更なし)
 # ----------------------------------------------------
 GAME_TRANSLATIONS = {
     "JA": {
@@ -50,7 +50,7 @@ def get_text(key):
     lang = st.session_state.get('game_language', 'JA')
     return GAME_TRANSLATIONS.get(lang, GAME_TRANSLATIONS['JA']).get(key, f"MISSING TEXT: {key}")
 
-# セッションステートの初期化 (前回の設定を維持)
+# セッションステートの初期化
 st.session_state.setdefault('game_language', 'JA')
 st.session_state.setdefault('continuous_days', 0)
 st.session_state.setdefault('game_state', 'START') 
@@ -66,9 +66,8 @@ st.session_state.setdefault(
 )
 
 # ----------------------------------------------------
-# 2. 連続記録日数を計算するコアロジック (省略)
+# 2. 連続記録日数を計算するコアロジック (変更なし)
 # ----------------------------------------------------
-# (calculate_streak_from_df関数は変更なし)
 def calculate_streak_from_df(df):
     date_column = None
     if '日付' in df.columns:
@@ -114,33 +113,58 @@ def calculate_streak_from_df(df):
 # 3. AI会話生成ロジック (重要修正箇所)
 # ----------------------------------------------------
 def generate_conversation_turn(conversation_context):
-    player_name = st.session_state['player_name']
     confidence_level = st.session_state['confidence_level']
+    continuous_days = st.session_state['continuous_days'] 
 
     time.sleep(0.5) 
     current_turn_count = len(st.session_state['conversation_history']) + 1 
     
-    # 選択肢の基本セット
-    choices = [
+    # 選択肢の全パターン（ベース）
+    base_choices = [
         {"text": "ミスはないと断言し、強がる (好感度 ±0)", "consequence": "neutral"},
         {"text": "資料をもう一度確認すると言って、その場を濁す (好感度 -5)", "consequence": "favor_down"},
-        {"text": "一歩踏み出し、具体的な解決策を提案する (好感度 +10)", "consequence": "favor_up"}
+        {"text": "一歩踏み出し、具体的な解決策を提案する (好感度 +10)", "consequence": "favor_up"},
+        # Lv.2で追加される選択肢 (4つ目)
+        {"text": "（Lv.2以上）リスクを理解した上で、この件を自分が責任を持つと宣言する (好感度 ±0, 自信 +5)", "consequence": "neutral_conf_up"},
+        # Lv.3で追加される選択肢 (5つ目)
+        {"text": "（Lv.3以上）ミスを認め、すぐ上司に報告すると断言する (大胆/好感度 +15)", "consequence": "favor_up_major"}
     ]
+    
+    # --- 選択肢の動的な絞り込みと追加 ---
+    
+    if continuous_days == 0:
+        # 日数0日（CSVなし）: 2択
+        speech = f"[ターン {current_turn_count}] (自信Lv.1 / 記録日数0日) どうしたらいい...？と動揺している。この場を離れたい気分だ...。"
+        
+        # 好感度DOWNと中立の2つに限定
+        choices = [c for c in base_choices if c['consequence'] in ['neutral', 'favor_down']]
+        
+    elif confidence_level == 1:
+        # 日数1〜2日: 3択
+        speech = f"[ターン {current_turn_count}] (自信Lv.1 / 記録日数1日以上) 進捗状況は？何かを隠しているように見えますよ。資料に問題はないか、今一度確認を。"
+        
+        # 基本の3つ（neutral, favor_down, favor_up）
+        choices = [c for c in base_choices if c['consequence'] in ['neutral', 'favor_down', 'favor_up']]
+        
+    elif confidence_level == 2:
+        # 🚨 日数3〜6日: 4択 (中間レベルの恩恵)
+        speech = f"[ターン {current_turn_count}] (自信Lv.2) 資料は万全ですか？君が何かを隠しているように見える。ミスを恐れず、状況を説明してください。"
+        
+        # 基本の3つ + 4つ目 (neutral_conf_up) を追加
+        choices = [c for c in base_choices if c['consequence'] in ['neutral', 'favor_down', 'favor_up', 'neutral_conf_up']]
+        
+    elif confidence_level >= 3:
+        # 🚨 日数7日以上: 5択 (最高レベルの恩恵)
+        speech = f"[ターン {current_turn_count}] (自信Lv.3以上) 私は君の能力を信頼しています。ミスを恐れずに、解決策を見つけることが重要だ。"
+        
+        # 基本の3つ + 4つ目 (neutral_conf_up) + 5つ目 (favor_up_major) を追加
+        choices = [c for c in base_choices if c['consequence'] in ['neutral', 'favor_down', 'favor_up', 'neutral_conf_up', 'favor_up_major']]
+
 
     # 会話ターン1の特殊処理（導入）
     if current_turn_count == 1:
-        speech = "金曜の終業間際ですが、元気がないようですね。クライアントへの資料、万全ですか？"
-    elif confidence_level >= 3:
-        # 自信レベル3以上の場合、さらに選択肢を追加（合計4つ）
-        speech = f"[ターン {current_turn_count}] (自信Lv.3以上) 私は君が優秀なのは知っています。ミスを恐れるな。解決策を話してください。"
-        
-        # 4つ目の大胆な選択肢を追加
-        bold_choice = {"text": "ミスを認め、すぐ上司に報告すると断言する (大胆/好感度 +15)", "consequence": "favor_up_major"} 
-        choices.append(bold_choice)
-        
-    else:
-        speech = f"[ターン {current_turn_count}] (自信Lv.1-2) 進捗状況は？何かを隠しているように見えますよ。資料に問題はないか、今一度確認を。"
-        # このレベルでは、選択肢は基本の3つ
+        # 導入ターンは、上記ロジックで決定されたセリフと選択肢をそのまま使用
+        pass 
 
     return {
         "character_name": "氷室 涼",
@@ -150,7 +174,7 @@ def generate_conversation_turn(conversation_context):
     }
 
 def handle_choice(choice_consequence):
-    # 好感度UPの度合いを修正
+    # 好感度UP/DOWNの度合いを定義
     if choice_consequence == "favor_up_major":
         st.session_state['favor_ryo'] = min(100, st.session_state['favor_ryo'] + 15)
         st.toast("好感度が大きく上がりました！", icon='💖')
@@ -160,6 +184,10 @@ def handle_choice(choice_consequence):
     elif choice_consequence == "favor_down":
         st.session_state['favor_ryo'] = max(0, st.session_state['favor_ryo'] - 5)
         st.toast("好感度が少し下がってしまいました...", icon='💔')
+    elif choice_consequence == "neutral_conf_up":
+        # Lv.2で追加された特殊な選択肢（好感度は変わらないが、自信レベルが上がる）
+        st.session_state['confidence_level'] = min(3, st.session_state['confidence_level'] + 1)
+        st.toast("状況は変わりませんが、少し自信がつきました。", icon='💪')
     elif choice_consequence == "neutral":
         st.toast("状況が変わりました。", icon='✅')
 
@@ -173,8 +201,21 @@ def handle_choice(choice_consequence):
 st.set_page_config(layout="centered", page_title=get_text("TITLE"))
 st.title(get_text("TITLE"))
 
+# --- ゲーム開始ボタンを押した際の処理を定義 ---
+def start_game_action():
+    # CSVファイルが正常にロードされていない状態('START')でボタンが押された場合
+    if st.session_state['game_state'] == 'START':
+        st.session_state['continuous_days'] = 0 # 0日として確定
+        st.session_state['confidence_level'] = 1
+        st.toast("CSVデータなしでゲームを開始します。自信レベルはLv.1、選択肢は2つからスタートです。", icon='ℹ️')
+    
+    # 状態を会話ロードへ遷移させ、画面を更新
+    st.session_state['game_state'] = 'CONVERSATION_LOAD'
+    st.rerun() 
+# ------------------------------------------------
+
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
-    # (スタート画面のロジックは変更なし)
+    # --- 最初の設定画面 ---
     LANGUAGES = {"JA": "日本語", "EN": "English"}
     st.session_state['game_language'] = st.selectbox(
         get_text("LANG_SELECT"), 
@@ -204,6 +245,7 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
 
     st.subheader(get_text("CSV_HEADER"))
 
+    # CSVアップローダー
     uploaded_file_csv = st.file_uploader( 
         get_text("CSV_UPLOAD"), 
         type="csv",
@@ -211,33 +253,36 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     )
 
     if uploaded_file_csv is not None and st.session_state['game_state'] == 'START':
+        # CSVロード成功時のロジック
         try:
             df = pd.read_csv(uploaded_file_csv)
             streak = calculate_streak_from_df(df)
             st.session_state['continuous_days'] = streak
             st.session_state['game_state'] = 'DIARY_LOADED'
             st.toast(get_text("DATA_SUCCESS"), icon='💾')
-            st.rerun() 
+            st.rerun() # 成功したらステータス表示のために即時リロード
             
         except Exception as e:
             st.error(get_text("DATA_ERROR") + f"\n{e}")
             st.session_state['continuous_days'] = 0
             st.session_state['game_state'] = 'START'
 
+    # --- ステータス表示 / 非表示 ---
     if st.session_state['game_state'] == 'DIARY_LOADED':
+        # CSVロード成功時のみ、詳細なステータスを表示
         st.success(get_text("DATA_SUCCESS"))
         
         days = st.session_state['continuous_days']
         
         if days >= 7:
             confidence_level = 3
-            confidence_text = "✨ HIGH (大胆な選択肢が出現！)" if st.session_state['game_language'] == 'JA' else "✨ HIGH (Bold choices available!)"
+            confidence_text = "✨ HIGH (選択肢は最大**5つ**に増加！)" if st.session_state['game_language'] == 'JA' else "✨ HIGH (5 choices available!)"
         elif days >= 3:
             confidence_level = 2
-            confidence_text = "💪 MEDIUM (バランスの取れた選択肢)" if st.session_state['game_language'] == 'JA' else "💪 MEDIUM (Balanced choices)"
+            confidence_text = "💪 MEDIUM (選択肢が**4つ**に増加！)" if st.session_state['game_language'] == 'JA' else "💪 MEDIUM (4 choices available!)"
         else:
             confidence_level = 1
-            confidence_text = "😥 LOW (消極的な選択肢が多い)" if st.session_state['game_language'] == 'JA' else "😥 LOW (Passive choices dominate)"
+            confidence_text = "😥 LOW (選択肢は**3つ**。基礎的な選択肢)" if st.session_state['game_language'] == 'JA' else "😥 LOW (3 choices available)"
             
         st.session_state['confidence_level'] = confidence_level 
         
@@ -248,15 +293,25 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
         
         st.markdown("---")
         
-        if st.button(get_text("START_GAME"), type="primary"):
-            st.session_state['game_state'] = 'CONVERSATION_LOAD'
-            st.rerun()
+    else:
+        # CSVがまだロードされていない、または失敗した場合は情報メッセージを表示
+        # 自信レベル1 (日数0日) は選択肢2つである旨を明記
+        st.info("💡 ポジティブ日記のCSVをアップロードすると、自信レベルが上がり、選択肢が最大5つに増加します。アップロードなしで開始する場合、**自信レベルLv.1 (日数0日)**となり、**選択肢は2つ**に限定されます。")
+        st.markdown("---")
+
+
+    # --- ゲーム開始ボタン（常に表示） ---
+    st.button(
+        get_text("START_GAME"), 
+        type="primary", 
+        on_click=start_game_action # on_clickでロジックを処理
+    )
 
 
 # --- 会話画面のレンダリング ---
 
 def render_conversation_ui():
-    """ゲームの会話画面をレンダリングする (GitHub画像直読み＆コンパクトレイアウト版)"""
+    """ゲームの会話画面をレンダリングする"""
     
     st.markdown("## 🏢 第1話: エースの葛藤")
     st.markdown(f"目標: まずは氷室と壁を取り払おう。現在の自信ゲージ (Confidence): Lv.{st.session_state['confidence_level']}")
@@ -315,7 +370,6 @@ def render_conversation_ui():
             
             for i, choice in enumerate(current_turn['choices']):
                 
-                # ロック機能は不要になったため、ここでは単にボタンを表示
                 button_text = choice['text']
                 
                 st.button(
@@ -325,7 +379,7 @@ def render_conversation_ui():
                     args=(choice['consequence'],)
                 )
         
-    # 🚨 会話ログは画面下部の独立した枠に配置 🚨
+    # --- 会話ログ ---
     
     st.markdown("---")
     st.markdown("### 💬 氷室の会話ログ")
