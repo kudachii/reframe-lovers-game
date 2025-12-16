@@ -170,8 +170,6 @@ def handle_choice(choice_consequence):
 st.set_page_config(layout="centered", page_title=get_text("TITLE"))
 st.title(get_text("TITLE"))
 
-# --- 最初の設定画面 (START/DIARY_LOADED) のロジックは省略 ---
-
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     
     LANGUAGES = {"JA": "日本語", "EN": "English"}
@@ -255,7 +253,7 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
 # --- 会話画面のレンダリング ---
 
 def render_conversation_ui():
-    """ゲームの会話画面をレンダリングする (ログ枠修正版)"""
+    """ゲームの会話画面をレンダリングする (ステータス表示移動版)"""
     
     st.markdown("## 🏢 第1話: エースの葛藤")
     st.markdown(f"目標: まずは氷室と壁を取り払おう。現在の自信ゲージ (Confidence): Lv.{st.session_state['confidence_level']}")
@@ -283,6 +281,13 @@ def render_conversation_ui():
         else:
             st.warning("⚠️ 会話の背景画像がアップロードされていません。画像をアップロードしてください。")
 
+        # 🚨 修正点: 好感度と自信レベルを画像の下に配置 🚨
+        st.markdown("---")
+        st.markdown("### 📈 現在のステータス")
+        st.markdown(f"❤️ **好感度**: **{st.session_state['favor_ryo']}** / 100")
+        st.markdown(f"✨ **自信レベル**: **{st.session_state.get('confidence_level', 1)}** / 3")
+        st.markdown("---") # ログとの区切りのため
+
     with col_choices:
         st.markdown("### ⭕ あなたの選択")
         
@@ -309,27 +314,19 @@ def render_conversation_ui():
                         args=(choice['consequence'],)
                     )
         
-        st.markdown("---")
-        st.markdown(f"❤️ **好感度**: **{st.session_state['favor_ryo']}** / 100")
-        st.markdown(f"✨ **自信レベル**: **{st.session_state.get('confidence_level', 1)}** / 3")
+        # 好感度と自信レベルの表示をこちらからは削除
 
-    # 🚨 修正点: 会話ログをStreamlitのコンテナ内で確実に表示する 🚨
+    # 🚨 会話ログは画面下部の独立した枠に配置 (前回の修正を維持) 🚨
     
     st.markdown("---")
     st.markdown("### 💬 氷室の会話ログ")
     
-    # ログを収めるためのStreamlitコンテナを用意
-    log_container = st.container()
-
-    # CSSをMarkdownとして記述し、Streamlitの要素をラップするスタイルを適用
-    # このCSSは、次のStreamlit要素（log_placeholder）をターゲットにしているわけではないが、
-    # シンプルな外枠として機能させる
     st.markdown(
         """
         <style>
             .dialog-box {
                 height: 180px; 
-                overflow-y: auto; /* overflow-y: scroll の代わりに auto を推奨 */
+                overflow-y: auto; 
                 border: 2px solid #333333; 
                 background-color: #f0f0f0; 
                 padding: 10px; 
@@ -341,7 +338,6 @@ def render_conversation_ui():
         unsafe_allow_html=True
     )
     
-    # CSSクラスを適用するHTML divタグ内で、ログを表示する
     log_content = "<div class='dialog-box'>"
     
     for turn in st.session_state['conversation_history']:
@@ -352,7 +348,6 @@ def render_conversation_ui():
 
     log_content += "</div>"
     
-    # 構築したHTMLを一度に描画
     st.markdown(log_content, unsafe_allow_html=True)
 
 
