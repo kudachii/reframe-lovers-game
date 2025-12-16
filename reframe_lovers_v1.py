@@ -5,7 +5,7 @@ import datetime
 import pytz
 import json
 import time 
-import os # ファイル存在チェックのためにインポート
+import os 
 
 # ----------------------------------------------------
 # 1. 多言語対応とセッションステートの初期化 (省略)
@@ -50,7 +50,7 @@ def get_text(key):
     lang = st.session_state.get('game_language', 'JA')
     return GAME_TRANSLATIONS.get(lang, GAME_TRANSLATIONS['JA']).get(key, f"MISSING TEXT: {key}")
 
-# セッションステートの初期化
+# セッションステートの初期化 (前回の設定を維持)
 st.session_state.setdefault('game_language', 'JA')
 st.session_state.setdefault('continuous_days', 0)
 st.session_state.setdefault('game_state', 'START') 
@@ -59,7 +59,7 @@ st.session_state.setdefault('player_name', 'あなた')
 st.session_state.setdefault('confidence_level', 1)
 st.session_state.setdefault('conversation_history', []) 
 st.session_state.setdefault('favor_ryo', 50)
-st.session_state.setdefault('uploaded_image_data', None) # ファイルアップロード機能がないため、この変数は実質不要
+st.session_state.setdefault('uploaded_image_data', None) 
 st.session_state.setdefault(
     'conversation_theme', 
     "金曜日の終業間際、オフィスの休憩スペースにて。主人公は、自分が担当した重要資料に**致命的なデータミスを発見**し、報告するか黙って修正するか迷っている。氷室は、主人公が資料を前に押し黙っていることに気づき、声をかける。"
@@ -68,6 +68,7 @@ st.session_state.setdefault(
 # ----------------------------------------------------
 # 2. 連続記録日数を計算するコアロジック (省略)
 # ----------------------------------------------------
+# (calculate_streak_from_df関数は変更なし)
 def calculate_streak_from_df(df):
     date_column = None
     if '日付' in df.columns:
@@ -108,8 +109,9 @@ def calculate_streak_from_df(df):
             
     return streak
 
+
 # ----------------------------------------------------
-# 3. AI会話生成ロジック (省略)
+# 3. AI会話生成ロジック (重要修正箇所)
 # ----------------------------------------------------
 def generate_conversation_turn(conversation_context):
     player_name = st.session_state['player_name']
@@ -118,27 +120,27 @@ def generate_conversation_turn(conversation_context):
     time.sleep(0.5) 
     current_turn_count = len(st.session_state['conversation_history']) + 1 
     
+    # 選択肢の基本セット
+    choices = [
+        {"text": "ミスはないと断言し、強がる (好感度 ±0)", "consequence": "neutral"},
+        {"text": "資料をもう一度確認すると言って、その場を濁す (好感度 -5)", "consequence": "favor_down"},
+        {"text": "一歩踏み出し、具体的な解決策を提案する (好感度 +10)", "consequence": "favor_up"}
+    ]
+
+    # 会話ターン1の特殊処理（導入）
     if current_turn_count == 1:
-        speech = "おはよう、あなたさん。今日のプロジェクトMTG、資料の準備は大丈夫ですか？"
-        choices = [
-            {"text": "資料チェックは完璧です！ (自信Lv.に関係なく選択)", "consequence": "neutral"},
-            {"text": "(要Lv.3) この選択肢はロックされています...", "consequence": "lock"},
-            {"text": "特にありません....", "consequence": "favor_down"}
-        ]
+        speech = "金曜の終業間際ですが、元気がないようですね。クライアントへの資料、万全ですか？"
     elif confidence_level >= 3:
-        speech = f"[ターン {current_turn_count}] (自信Lv.3以上) 私は君が優秀なのは知っているが、その顔はどうした？ミスを恐れるな。正直に報告し、解決策を見つけろ。"
-        choices = [
-            {"text": "ミスを認め、すぐ上司に報告すると断言する (大胆)", "consequence": "favor_up"},
-            {"text": "黙って修正できると主張し、自分で解決を試みる", "consequence": "favor_down"},
-            {"text": "氷室にだけ、どうすべきか相談してみる", "consequence": "neutral"}
-        ]
+        # 自信レベル3以上の場合、さらに選択肢を追加（合計4つ）
+        speech = f"[ターン {current_turn_count}] (自信Lv.3以上) 私は君が優秀なのは知っています。ミスを恐れるな。解決策を話してください。"
+        
+        # 4つ目の大胆な選択肢を追加
+        bold_choice = {"text": "ミスを認め、すぐ上司に報告すると断言する (大胆/好感度 +15)", "consequence": "favor_up_major"} 
+        choices.append(bold_choice)
+        
     else:
-        speech = f"[ターン {current_turn_count}] (自信Lv.1) 進捗状況は？君が何かを隠しているように見える。クライアントへの資料は万全ですか？"
-        choices = [
-            {"text": "資料をもう一度確認すると言って、その場を濁す (消極的)", "consequence": "favor_down"},
-            {"text": "ミスはないと断言し、強がる", "consequence": "neutral"},
-            {"text": "一歩踏み出し、具体的な解決策を提案する", "consequence": "favor_up"}
-        ]
+        speech = f"[ターン {current_turn_count}] (自信Lv.1-2) 進捗状況は？何かを隠しているように見えますよ。資料に問題はないか、今一度確認を。"
+        # このレベルでは、選択肢は基本の3つ
 
     return {
         "character_name": "氷室 涼",
@@ -148,11 +150,11 @@ def generate_conversation_turn(conversation_context):
     }
 
 def handle_choice(choice_consequence):
-    if choice_consequence == "lock":
-        st.warning("この選択肢は、自信レベルLv.3以上が必要です。")
-        return 
-
-    if choice_consequence == "favor_up":
+    # 好感度UPの度合いを修正
+    if choice_consequence == "favor_up_major":
+        st.session_state['favor_ryo'] = min(100, st.session_state['favor_ryo'] + 15)
+        st.toast("好感度が大きく上がりました！", icon='💖')
+    elif choice_consequence == "favor_up":
         st.session_state['favor_ryo'] = min(100, st.session_state['favor_ryo'] + 10)
         st.toast("好感度が少し上がりました！", icon='❤️')
     elif choice_consequence == "favor_down":
@@ -172,7 +174,7 @@ st.set_page_config(layout="centered", page_title=get_text("TITLE"))
 st.title(get_text("TITLE"))
 
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
-    # --- 最初の設定画面 (START/DIARY_LOADED) のロジックは省略 ---
+    # (スタート画面のロジックは変更なし)
     LANGUAGES = {"JA": "日本語", "EN": "English"}
     st.session_state['game_language'] = st.selectbox(
         get_text("LANG_SELECT"), 
@@ -260,25 +262,20 @@ def render_conversation_ui():
     st.markdown(f"目標: まずは氷室と壁を取り払おう。現在の自信ゲージ (Confidence): Lv.{st.session_state['confidence_level']}")
     st.markdown("---")
     
-    # コラムの比率を調整 (画像エリアを少し大きく)
     col_img, col_choices = st.columns([1.2, 0.8])
     
     # --- 画像とステータス表示エリア ---
     with col_img:
         st.markdown("### 👤 氷室涼 (背景)")
         
-        # 🚨 修正: st.file_uploader を削除し、ローカルファイル読み込みに置き換え 🚨
         IMAGE_PATH = "bg_image.jpg" 
 
         if os.path.exists(IMAGE_PATH):
             try:
-                # ローカル/GitHub上の画像ファイルを直接読み込む
                 st.image(IMAGE_PATH, caption="", use_column_width="always")
-                
             except Exception as e:
                 st.error(f"画像を読み込めませんでした: {e}")
         else:
-            # ファイルがない場合のプレースホルダー (高さを維持)
             st.warning(f"⚠️ ファイルが見つかりません: '{IMAGE_PATH}' をGitHubに配置してください。")
             st.markdown(
                 """
@@ -292,7 +289,6 @@ def render_conversation_ui():
                 unsafe_allow_html=True
             )
         
-        # 🚨 好感度と自信レベルを画像の下に横並びで配置 🚨
         st.markdown("---")
         
         col_favor, col_conf = st.columns(2)
@@ -319,28 +315,21 @@ def render_conversation_ui():
             
             for i, choice in enumerate(current_turn['choices']):
                 
-                is_locked = (choice['consequence'] == 'lock') or \
-                            (choice['text'].startswith('(要Lv.3)') and st.session_state['confidence_level'] < 3)
-                
+                # ロック機能は不要になったため、ここでは単にボタンを表示
                 button_text = choice['text']
-                if is_locked:
-                    # ロックされている選択肢は無効化
-                    st.button(button_text, disabled=True, key=f"choice_{current_turn_index}_{i}_{unique_session_id}")
-                else:
-                    # 有効な選択肢
-                    st.button(
-                        button_text, 
-                        key=f"choice_{current_turn_index}_{i}_{unique_session_id}", 
-                        on_click=handle_choice, 
-                        args=(choice['consequence'],)
-                    )
+                
+                st.button(
+                    button_text, 
+                    key=f"choice_{current_turn_index}_{i}_{unique_session_id}", 
+                    on_click=handle_choice, 
+                    args=(choice['consequence'],)
+                )
         
     # 🚨 会話ログは画面下部の独立した枠に配置 🚨
     
     st.markdown("---")
     st.markdown("### 💬 氷室の会話ログ")
     
-    # CSSで会話ログの枠を設定
     st.markdown(
         """
         <style>
