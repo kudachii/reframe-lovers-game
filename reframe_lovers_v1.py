@@ -111,12 +111,11 @@ st.session_state.setdefault(
 )
 
 # ----------------------------------------------------
-# 2. 連続記録日数を計算するコアロジック (列名検索を強化)
+# 2. 連続記録日数を計算するコアロジック (Lv.1保証ロジックを追加)
 # ----------------------------------------------------
 def calculate_streak_from_df(df):
     date_column = None
     
-    # 🚨 修正箇所: 日付列の候補を増やす
     DATE_CANDIDATES = ['日付', 'Date', 'datetime', 'timestamp', 'date_local']
     
     for col in df.columns:
@@ -125,15 +124,19 @@ def calculate_streak_from_df(df):
             break
 
     if date_column is None:
-        # st.error("⚠️ CSVファイルに適切な日付列（'日付', 'Date', 'datetime' など）が見つかりません。")
+        # 日付列が見つからない場合は 0
         return 0
         
     df = df.dropna(subset=[date_column])
     
+    # データが空なら 0
+    if df.empty:
+        return 0
+
     try:
         df['date_only'] = pd.to_datetime(
             df[date_column], 
-            errors='coerce', 
+            errors='coerce', # エラーが発生しても強制的にNaNにする
             infer_datetime_format=True
         ).dt.date
     except Exception as e:
@@ -141,6 +144,16 @@ def calculate_streak_from_df(df):
         return 0
 
     df = df.dropna(subset=['date_only'])
+    
+    # 🚨 修正ロジック 1: 有効な日付データが1つでもあれば、days_countを1以上と見なす
+    if df['date_only'].nunique() > 0:
+        # ここから下の連続日数計算ロジックは、継続性を保つためにそのまま実行
+        is_data_present = True
+    else:
+        # 日付列があっても有効なデータがない場合
+        return 0 
+
+
     unique_dates = sorted(list(df['date_only'].unique()), reverse=True)
     
     if not unique_dates:
@@ -157,6 +170,10 @@ def calculate_streak_from_df(df):
             current_date_to_check -= datetime.timedelta(days=1)
         elif entry_date < current_date_to_check:
             break
+            
+    # 🚨 修正ロジック 2: 連続日数が0で、かつデータ自体は存在する場合、最低1日とする
+    if streak == 0 and is_data_present:
+        return 1
             
     return streak
 
@@ -311,36 +328,35 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
         help=get_text("CSV_HINT")
     )
 
+    is_csv_uploaded_and_loaded = False 
+    
     if uploaded_file_csv is not None and st.session_state['game_state'] == 'START':
         
-        # 🚨 修正箇所: 複数のエンコーディングを試行する
         try:
-            # 1. デフォルトのUTF-8で試行
+            # CSVのエンコーディングの試行錯誤ロジック
             uploaded_file_csv.seek(0)
-            df = pd.read_csv(uploaded_file_csv)
-            
-        except UnicodeDecodeError:
-            # 2. UTF-8で失敗した場合、Shift-JIS/cp932で試行 (日本語環境で最も多い)
             try:
+                df = pd.read_csv(uploaded_file_csv)
+            except UnicodeDecodeError:
                 uploaded_file_csv.seek(0)
                 df = pd.read_csv(uploaded_file_csv, encoding='cp932')
                 st.toast("⚠️ エンコーディング (文字コード) をShift-JISで読み込みました。", icon='💬')
 
-            except Exception as e_inner:
-                # 3. それでも失敗した場合、エラーを出す
-                st.error(get_text("DATA_ERROR") + f"\n原因: CSVの文字コードか形式が不正です。\nエラー詳細: {e_inner}")
-                st.session_state['continuous_days'] = 0
-                st.session_state['confidence_level'] = 0 
-                st.session_state['game_state'] = 'START'
-                st.rerun() # 中断して再描画
+            # 読み込み成功後の処理
+            streak = calculate_streak_from_df(df)
+            st.session_state['continuous_days'] = streak
+            st.session_state['game_state'] = 'DIARY_LOADED'
+            st.toast(get_text("DATA_SUCCESS"), icon='💾')
+            is_csv_uploaded_and_loaded = True 
+            st.rerun() 
+            
+        except Exception as e:
+            st.error(get_text("DATA_ERROR") + f"\n原因: CSVの文字コードか形式が不正です。\nエラー詳細: {e}")
+            st.session_state['continuous_days'] = 0
+            st.session_state['confidence_level'] = 0 
+            st.session_state['game_state'] = 'START'
+            st.rerun() # 中断して再描画
 
-        # 読み込み成功後の処理
-        streak = calculate_streak_from_df(df)
-        st.session_state['continuous_days'] = streak
-        st.session_state['game_state'] = 'DIARY_LOADED'
-        st.toast(get_text("DATA_SUCCESS"), icon='💾')
-        st.rerun() 
-        
     if st.session_state['game_state'] == 'DIARY_LOADED':
         st.success(get_text("DATA_SUCCESS"))
         
@@ -354,12 +370,13 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
             confidence_level = 2
             confidence_text = "💪 MEDIUM (選択肢が**4つ**に増加！)" if st.session_state['game_language'] == 'JA' else "💪 MEDIUM (4 choices available!)"
         elif days >= 1:
+            # 🚨 days=1 は、CSVからデータが見つかった最低レベルとして Lv.1 を保証
             confidence_level = 1
-            confidence_text = "😥 LOW (選択肢は**3つ**。基礎的な選択肢)" if st.session_state['game_language'] == 'JA' else "😥 LOW (3 choices available)"
+            confidence_text = "✅ LV. 1 (データ連動を確認 - 選択肢は**3つ**に増加！)" if st.session_state['game_language'] == 'JA' else "😥 LOW (3 choices available)"
         else:
-            # CSVは読み込めたが記録がない場合 (days == 0) は Lv.0 とし、エラー表示を回避
+            # CSVがアップロードされていないか、何らかの理由でデータが見つからなかった場合
             confidence_level = 0
-            confidence_text = "⚠️ LV. 0 (記録がありません - 選択肢は**2つ**に限定されます)"
+            confidence_text = "⚠️ LV. 0 (記録なし - 選択肢は**2つ**に限定されます)"
             
         st.session_state['confidence_level'] = confidence_level 
         
