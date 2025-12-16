@@ -68,10 +68,47 @@ st.session_state.setdefault(
 # 2. 連続記録日数を計算するコアロジック (省略)
 # ----------------------------------------------------
 def calculate_streak_from_df(df):
-    return 0 
+    date_column = None
+    if '日付' in df.columns:
+        date_column = '日付'
+    elif 'Date' in df.columns:
+        date_column = 'Date'
+    else:
+        return 0
+        
+    df = df.dropna(subset=[date_column])
+    
+    try:
+        df['date_only'] = pd.to_datetime(
+            df[date_column], 
+            errors='coerce', 
+            infer_datetime_format=True
+        ).dt.date
+    except Exception as e:
+        return 0
+
+    df = df.dropna(subset=['date_only'])
+    unique_dates = sorted(list(df['date_only'].unique()), reverse=True)
+    
+    if not unique_dates:
+        return 0
+
+    streak = 0
+    jst = pytz.timezone('Asia/Tokyo')
+    today = datetime.datetime.now(jst).date()
+    current_date_to_check = today
+    
+    for entry_date in unique_dates:
+        if entry_date == current_date_to_check:
+            streak += 1
+            current_date_to_check -= datetime.timedelta(days=1)
+        elif entry_date < current_date_to_check:
+            break
+            
+    return streak
 
 # ----------------------------------------------------
-# 3. AI会話生成ロジック
+# 3. AI会話生成ロジック (前回と変更なし)
 # ----------------------------------------------------
 
 def generate_conversation_turn(conversation_context):
@@ -115,7 +152,7 @@ def handle_choice(choice_consequence):
     
     if choice_consequence == "lock":
         st.warning("この選択肢は、自信レベルLv.3以上が必要です。")
-        return # ロックされている選択肢は遷移しない
+        return 
 
     if choice_consequence == "favor_up":
         st.session_state['favor_ryo'] = min(100, st.session_state['favor_ryo'] + 10)
@@ -137,8 +174,86 @@ st.set_page_config(layout="centered", page_title=get_text("TITLE"))
 st.title(get_text("TITLE"))
 
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
-    # --- 初期設定UIは省略 ---
-    pass
+    
+    # 🚨 修正点: 初期設定UIを復元 🚨
+    # --- 初期設定UI ---
+    LANGUAGES = {"JA": "日本語", "EN": "English"}
+    st.session_state['game_language'] = st.selectbox(
+        get_text("LANG_SELECT"), 
+        options=list(LANGUAGES.keys()), 
+        format_func=lambda x: LANGUAGES[x]
+    )
+    st.markdown("---")
+
+    st.subheader("👤 Character Setup")
+    col_g, col_n = st.columns([0.4, 0.6])
+
+    with col_g:
+        st.session_state['player_gender'] = st.selectbox(
+            get_text("GENDER_SELECT"), 
+            options=["Female", "Male"],
+            format_func=lambda x: get_text("GENDER_FEMALE") if x == "Female" else get_text("GENDER_MALE")
+        )
+
+    with col_n:
+        st.session_state['player_name'] = st.text_input(
+            get_text("NAME_INPUT"), 
+            value=st.session_state['player_name'],
+            max_chars=10
+        )
+
+    st.markdown("---")
+
+    st.subheader(get_text("CSV_HEADER"))
+
+    uploaded_file_csv = st.file_uploader( 
+        get_text("CSV_UPLOAD"), 
+        type="csv",
+        help=get_text("CSV_HINT")
+    )
+
+    if uploaded_file_csv is not None and st.session_state['game_state'] == 'START':
+        try:
+            df = pd.read_csv(uploaded_file_csv)
+            streak = calculate_streak_from_df(df)
+            st.session_state['continuous_days'] = streak
+            st.session_state['game_state'] = 'DIARY_LOADED'
+            st.toast(get_text("DATA_SUCCESS"), icon='💾')
+            st.rerun() 
+            
+        except Exception as e:
+            st.error(get_text("DATA_ERROR") + f"\n{e}")
+            st.session_state['continuous_days'] = 0
+            st.session_state['game_state'] = 'START'
+
+    if st.session_state['game_state'] == 'DIARY_LOADED':
+        st.success(get_text("DATA_SUCCESS"))
+        
+        days = st.session_state['continuous_days']
+        
+        if days >= 7:
+            confidence_level = 3
+            confidence_text = "✨ HIGH (大胆な選択肢が出現！)" if st.session_state['game_language'] == 'JA' else "✨ HIGH (Bold choices available!)"
+        elif days >= 3:
+            confidence_level = 2
+            confidence_text = "💪 MEDIUM (バランスの取れた選択肢)" if st.session_state['game_language'] == 'JA' else "💪 MEDIUM (Balanced choices)"
+        else:
+            confidence_level = 1
+            confidence_text = "😥 LOW (消極的な選択肢が多い)" if st.session_state['game_language'] == 'JA' else "😥 LOW (Passive choices dominate)"
+            
+        st.session_state['confidence_level'] = confidence_level 
+        
+        st.markdown(f"**{get_text('CONTINUOUS_DAYS')}** **{days}** 日")
+        st.markdown(f"**{get_text('CONFIDENCE_GAUGE')}**")
+        st.progress(confidence_level / 3) 
+        st.write(confidence_text)
+        
+        st.markdown("---")
+        
+        if st.button(get_text("START_GAME"), type="primary"):
+            st.session_state['game_state'] = 'CONVERSATION_LOAD'
+            st.rerun()
+
 
 # --- 会話画面のレンダリング ---
 
@@ -154,7 +269,7 @@ def render_conversation_ui():
     with col_img:
         st.markdown("### 氷室涼")
         
-        # 🚨 修正点: アップローダーのヒントテキストを変更 🚨
+        # 画像アップローダー
         uploaded_file = st.file_uploader( 
             "会話の背景画像ファイル (bg_image.jpg など) をアップロード", 
             type=['jpg', 'jpeg', 'png'],
