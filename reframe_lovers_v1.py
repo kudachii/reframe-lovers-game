@@ -10,7 +10,6 @@ import time
 # 1. 多言語対応とセッションステートの初期化 (省略)
 # ----------------------------------------------------
 GAME_TRANSLATIONS = {
-    # ... (省略) ...
     "JA": {
         "TITLE": "Reframe Lovers 〜スタートアップの空の下で〜 (プロトタイプ)",
         "LANG_SELECT": "言語を選択 / Select Language",
@@ -67,30 +66,66 @@ st.session_state.setdefault(
 # ----------------------------------------------------
 # 2. 連続記録日数を計算するコアロジック (省略)
 # ----------------------------------------------------
-# calculate_streak_from_df関数は省略
+def calculate_streak_from_df(df):
+    date_column = None
+    if '日付' in df.columns:
+        date_column = '日付'
+    elif 'Date' in df.columns:
+        date_column = 'Date'
+    else:
+        return 0
+        
+    df = df.dropna(subset=[date_column])
+    
+    try:
+        df['date_only'] = pd.to_datetime(
+            df[date_column], 
+            errors='coerce', 
+            infer_datetime_format=True
+        ).dt.date
+    except Exception as e:
+        return 0
+
+    df = df.dropna(subset=['date_only'])
+    unique_dates = sorted(list(df['date_only'].unique()), reverse=True)
+    
+    if not unique_dates:
+        return 0
+
+    streak = 0
+    jst = pytz.timezone('Asia/Tokyo')
+    today = datetime.datetime.now(jst).date()
+    current_date_to_check = today
+    
+    for entry_date in unique_dates:
+        if entry_date == current_date_to_check:
+            streak += 1
+            current_date_to_check -= datetime.timedelta(days=1)
+        elif entry_date < current_date_to_check:
+            break
+            
+    return streak
 
 # ----------------------------------------------------
-# 3. AI会話生成ロジック
+# 3. AI会話生成ロジック (省略)
 # ----------------------------------------------------
 
 def generate_conversation_turn(conversation_context):
     player_name = st.session_state['player_name']
     confidence_level = st.session_state['confidence_level']
 
-    time.sleep(0.5) # スピードアップのため短縮
+    time.sleep(1.5) 
 
-    # 🚨 修正点: ターン数をspeechに含め、ユニーク性を確保
-    current_turn_count = len(st.session_state['conversation_history']) + 1 
-    
+    # 🚨 ここで、会話のコンテキストに基づいて次の会話が生成される想定です
     if confidence_level >= 3:
-        speech = f"[ターン {current_turn_count}] {player_name}、まだ残っていたのか。珍しいな。その資料... 深刻な顔をしているが、まさか致命的なミスか？正直に話すべきだ。それが、お前（あなた）の役割だろ。"
+        speech = f"{player_name}、まだ残っていたのか。珍しいな。その資料... 深刻な顔をしているが、まさか致命的なミスか？正直に話すべきだ。それが、お前（あなた）の役割だろ。"
         choices = [
             {"text": "ミスを認め、すぐ上司に報告すると断言する (大胆)", "consequence": "favor_up"},
             {"text": "黙って修正できると主張し、自分で解決を試みる", "consequence": "favor_down"},
             {"text": "氷室にだけ、どうすべきか相談してみる", "consequence": "neutral"}
         ]
     else:
-        speech = f"[ターン {current_turn_count}] {player_name}、進捗状況は？君が何かを隠しているように見える。クライアントへの資料は万全ですか？"
+        speech = f"{player_name}、進捗状況は？君が何かを隠しているように見える。クライアントへの資料は万全ですか？"
         choices = [
             {"text": "資料をもう一度確認すると言って、その場を濁す (消極的)", "consequence": "favor_down"},
             {"text": "ミスはないと断言し、強がる", "consequence": "neutral"},
@@ -107,6 +142,8 @@ def generate_conversation_turn(conversation_context):
 def handle_choice(choice_consequence):
     """選択肢が選ばれた時の好感度・自信ゲージの処理と、次のターンへの遷移"""
     
+    # 🚨 修正点: 会話履歴の操作を削除。好感度更新とステート遷移のみ。
+
     if choice_consequence == "favor_up":
         st.session_state['favor_ryo'] = min(100, st.session_state['favor_ryo'] + 10)
         st.toast("好感度が少し上がりました！", icon='❤️')
@@ -129,14 +166,82 @@ st.title(get_text("TITLE"))
 
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     # ... (初期設定UIコードは省略) ...
-    # ... (CSV処理コードは省略) ...
-    pass # 省略した初期設定UIコードをここに含める
-    
-    # 連続記録日数計算関数は外部定義のため、ここでは省略
+    LANGUAGES = {"JA": "日本語", "EN": "English"}
+    st.session_state['game_language'] = st.selectbox(
+        get_text("LANG_SELECT"), 
+        options=list(LANGUAGES.keys()), 
+        format_func=lambda x: LANGUAGES[x]
+    )
+    st.markdown("---")
+
+    st.subheader("👤 Character Setup")
+    col_g, col_n = st.columns([0.4, 0.6])
+
+    with col_g:
+        st.session_state['player_gender'] = st.selectbox(
+            get_text("GENDER_SELECT"), 
+            options=["Female", "Male"],
+            format_func=lambda x: get_text("GENDER_FEMALE") if x == "Female" else get_text("GENDER_MALE")
+        )
+
+    with col_n:
+        st.session_state['player_name'] = st.text_input(
+            get_text("NAME_INPUT"), 
+            value=st.session_state['player_name'],
+            max_chars=10
+        )
+
+    st.markdown("---")
+
+    st.subheader(get_text("CSV_HEADER"))
+
+    uploaded_file = st.file_uploader(
+        get_text("CSV_UPLOAD"), 
+        type="csv",
+        help=get_text("CSV_HINT")
+    )
+
+    if uploaded_file is not None and st.session_state['game_state'] == 'START':
+        try:
+            df = pd.read_csv(uploaded_file)
+            streak = calculate_streak_from_df(df)
+            st.session_state['continuous_days'] = streak
+            st.session_state['game_state'] = 'DIARY_LOADED'
+            st.toast(get_text("DATA_SUCCESS"), icon='💾')
+            st.rerun() 
+            
+        except Exception as e:
+            st.error(get_text("DATA_ERROR") + f"\n{e}")
+            st.session_state['continuous_days'] = 0
+            st.session_state['game_state'] = 'START'
 
     if st.session_state['game_state'] == 'DIARY_LOADED':
-        # ... (データロード後のUI表示コードは省略) ...
-        pass # 省略したロード後UIコードをここに含める
+        st.success(get_text("DATA_SUCCESS"))
+        
+        days = st.session_state['continuous_days']
+        
+        if days >= 7:
+            confidence_level = 3
+            confidence_text = "✨ HIGH (大胆な選択肢が出現！)" if st.session_state['game_language'] == 'JA' else "✨ HIGH (Bold choices available!)"
+        elif days >= 3:
+            confidence_level = 2
+            confidence_text = "💪 MEDIUM (バランスの取れた選択肢)" if st.session_state['game_language'] == 'JA' else "💪 MEDIUM (Balanced choices)"
+        else:
+            confidence_level = 1
+            confidence_text = "😥 LOW (消極的な選択肢が多い)" if st.session_state['game_language'] == 'JA' else "😥 LOW (Passive choices dominate)"
+            
+        st.session_state['confidence_level'] = confidence_level 
+        
+        st.markdown(f"**{get_text('CONTINUOUS_DAYS')}** **{days}** 日")
+        st.markdown(f"**{get_text('CONFIDENCE_GAUGE')}**")
+        st.progress(confidence_level / 3) 
+        st.write(confidence_text)
+        
+        st.markdown("---")
+        
+        if st.button(get_text("START_GAME"), type="primary"):
+            st.session_state['game_state'] = 'CONVERSATION_LOAD'
+            st.rerun()
 
 
 # --- 会話画面のレンダリング ---
@@ -187,16 +292,14 @@ def render_conversation_ui():
                 )
                 
     elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
-        
-        # 🚨 修正箇所
-        st.info('⚙️ 氷室 涼が思考中... 次の会話を生成しています...')
-        
-        # generate_conversation_turn は time.sleep(0.5) を含んでいます
-        new_turn = generate_conversation_turn(st.session_state['conversation_theme']) 
+        with st.spinner('氷室 涼が思考中... データ生成中...'):
+            
+            # 🚨 修正点: 履歴のリセット処理を削除
+            new_turn = generate_conversation_turn(st.session_state['conversation_theme']) 
         
         if new_turn:
-            st.session_state['conversation_history'].append(new_turn) 
-            st.session_state['game_state'] = 'CONVERSATION' # 状態を CONVERSATION に確定させる
+            st.session_state['conversation_history'].append(new_turn) # 履歴に追加
+            st.session_state['game_state'] = 'CONVERSATION'
             st.rerun()
         else:
             st.error("会話の生成に失敗しました。AIの設定を確認してください。")
