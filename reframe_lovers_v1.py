@@ -8,9 +8,10 @@ import time
 import os 
 
 # ----------------------------------------------------
-# 1. 多言語対応とセッションステートの初期化 (変更なし)
+# 1. 多言語対応とセッションステートの初期化 (変更点あり)
 # ----------------------------------------------------
 GAME_TRANSLATIONS = {
+    # (変更なし)
     "JA": {
         "TITLE": "Reframe Lovers 〜スタートアップの空の下で〜 (プロトタイプ)",
         "LANG_SELECT": "言語を選択 / Select Language",
@@ -60,6 +61,7 @@ st.session_state.setdefault('confidence_level', 1)
 st.session_state.setdefault('conversation_history', []) 
 st.session_state.setdefault('favor_ryo', 50)
 st.session_state.setdefault('uploaded_image_data', None) 
+st.session_state.setdefault('feedback_message', None) # 👈 New: フィードバックメッセージ用
 st.session_state.setdefault(
     'conversation_theme', 
     "金曜日の終業間際、オフィスの休憩スペースにて。主人公は、自分が担当した重要資料に**致命的なデータミスを発見**し、報告するか黙って修正するか迷っている。氷室は、主人公が資料を前に押し黙っていることに気づき、声をかける。"
@@ -116,6 +118,9 @@ def generate_conversation_turn(conversation_context):
     confidence_level = st.session_state['confidence_level']
     continuous_days = st.session_state['continuous_days'] 
 
+    # 次のターンに入る前にフィードバックメッセージをクリア
+    st.session_state['feedback_message'] = None 
+    
     time.sleep(0.5) 
     current_turn_count = len(st.session_state['conversation_history']) + 1 
     
@@ -133,37 +138,20 @@ def generate_conversation_turn(conversation_context):
     # --- 選択肢の動的な絞り込みと追加 ---
     
     if continuous_days == 0:
-        # 日数0日（CSVなし）: 2択
         speech = f"[ターン {current_turn_count}] (自信Lv.1 / 記録日数0日) どうしたらいい...？と動揺している。この場を離れたい気分だ...。"
-        
-        # 好感度DOWNと中立の2つに限定
         choices = [c for c in base_choices if c['consequence'] in ['neutral', 'favor_down']]
-        
     elif confidence_level == 1:
-        # 日数1〜2日: 3択
         speech = f"[ターン {current_turn_count}] (自信Lv.1 / 記録日数1日以上) 進捗状況は？何かを隠しているように見えますよ。資料に問題はないか、今一度確認を。"
-        
-        # 基本の3つ（neutral, favor_down, favor_up）
         choices = [c for c in base_choices if c['consequence'] in ['neutral', 'favor_down', 'favor_up']]
-        
     elif confidence_level == 2:
-        # 日数3〜6日: 4択 (中間レベルの恩恵)
         speech = f"[ターン {current_turn_count}] (自信Lv.2) 資料は万全ですか？君が何かを隠しているように見える。ミスを恐れず、状況を説明してください。"
-        
-        # 基本の3つ + 4つ目 (neutral_conf_up) を追加
         choices = [c for c in base_choices if c['consequence'] in ['neutral', 'favor_down', 'favor_up', 'neutral_conf_up']]
-        
     elif confidence_level >= 3:
-        # 日数7日以上: 5択 (最高レベルの恩恵)
         speech = f"[ターン {current_turn_count}] (自信Lv.3以上) 私は君の能力を信頼しています。ミスを恐れずに、解決策を見つけることが重要だ。"
-        
-        # 基本の3つ + 4つ目 (neutral_conf_up) + 5つ目 (favor_up_major) を追加
         choices = [c for c in base_choices if c['consequence'] in ['neutral', 'favor_down', 'favor_up', 'neutral_conf_up', 'favor_up_major']]
-
 
     # 会話ターン1の特殊処理（導入）
     if current_turn_count == 1:
-        # 導入ターンは、上記ロジックで決定されたセリフと選択肢をそのまま使用
         pass 
 
     return {
@@ -174,22 +162,21 @@ def generate_conversation_turn(conversation_context):
     }
 
 def handle_choice(choice_consequence):
-    # 好感度UP/DOWNの度合いを定義
+    # トーストの代わりにフィードバックメッセージをセット 👈 修正点
     if choice_consequence == "favor_up_major":
         st.session_state['favor_ryo'] = min(100, st.session_state['favor_ryo'] + 15)
-        st.toast("好感度が大きく上がりました！", icon='💖')
+        st.session_state['feedback_message'] = ("success", "💖 好感度が大きく上がりました！ (+15)")
     elif choice_consequence == "favor_up":
         st.session_state['favor_ryo'] = min(100, st.session_state['favor_ryo'] + 10)
-        st.toast("好感度が少し上がりました！", icon='❤️')
+        st.session_state['feedback_message'] = ("success", "❤️ 好感度が少し上がりました！ (+10)")
     elif choice_consequence == "favor_down":
         st.session_state['favor_ryo'] = max(0, st.session_state['favor_ryo'] - 5)
-        st.toast("好感度が少し下がってしまいました...", icon='💔')
+        st.session_state['feedback_message'] = ("error", "💔 好感度が少し下がってしまいました... (-5)")
     elif choice_consequence == "neutral_conf_up":
-        # Lv.2で追加された特殊な選択肢（好感度は変わらないが、自信レベルが上がる）
         st.session_state['confidence_level'] = min(3, st.session_state['confidence_level'] + 1)
-        st.toast("状況は変わりませんが、少し自信がつきました。", icon='💪')
+        st.session_state['feedback_message'] = ("info", "💪 状況は変わりませんが、少し自信がつきました。")
     elif choice_consequence == "neutral":
-        st.toast("状況が変わりました。", icon='✅')
+        st.session_state['feedback_message'] = ("info", "✅ 状況が変わりました。")
 
     st.session_state['game_state'] = 'CONVERSATION_LOAD'
     st.rerun()
@@ -299,7 +286,7 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     )
 
 
-# --- 会話画面のレンダリング (大幅修正) ---
+# --- 会話画面のレンダリング (フィードバック表示を追加) ---
 
 def render_conversation_ui():
     """ゲームの会話画面をレンダリングする (コンパクトな新しいレイアウト)"""
@@ -307,22 +294,19 @@ def render_conversation_ui():
     st.markdown("## 🏢 第1話: エースの葛藤")
     st.markdown("---")
     
-    col_img, col_dialogue = st.columns([1, 1.2]) # 画像エリアを少し狭く、会話エリアを広く
+    col_img, col_dialogue = st.columns([1, 1.2]) 
 
     # --- 1. 画像とステータス表示エリア ---
     with col_img:
         
-        # 氷室涼の画像
         IMAGE_PATH = "bg_image.jpg" 
         
         if os.path.exists(IMAGE_PATH):
             try:
                 st.image(IMAGE_PATH, caption="", use_column_width="always")
             except:
-                # 画像の代わりにプレースホルダー
                 st.warning(f"⚠️ ファイルが見つかりません: '{IMAGE_PATH}' をGitHubに配置してください。")
         else:
-            # プレースホルダーのHTML/Markdown
             st.markdown(
                 """
                 <div style="height: 300px; background-color: #333333; 
@@ -345,6 +329,16 @@ def render_conversation_ui():
         with col_conf:
             st.markdown(f"⭐ **自信レベル**: **{st.session_state.get('confidence_level', 1)}** / 3")
         
+        # 👈 修正点: フィードバックメッセージを安定した位置に表示
+        if st.session_state['feedback_message']:
+            msg_type, msg_text = st.session_state['feedback_message']
+            if msg_type == "success":
+                st.success(msg_text)
+            elif msg_type == "error":
+                st.error(msg_text)
+            else:
+                st.info(msg_text)
+        
         st.markdown("---")
 
     # --- 2. 会話ログと選択肢エリア ---
@@ -352,7 +346,6 @@ def render_conversation_ui():
         
         st.markdown("### 💬 氷室の会話ログ")
         
-        # 会話ログボックスのスタイル
         st.markdown(
             """
             <style>
@@ -373,7 +366,6 @@ def render_conversation_ui():
         
         log_content = "<div class='dialog-box-right'>"
         
-        # 最新の会話のみを表示（画像のデザインに合わせてシンプルに）
         if st.session_state['conversation_history']:
             last_turn = st.session_state['conversation_history'][-1]
             log_content += f"**{last_turn['character_name']}**: {last_turn['character_speech']}"
@@ -392,17 +384,15 @@ def render_conversation_ui():
 
         if st.session_state['game_state'] == 'CONVERSATION' and current_turn:
             
-            # 画像のレイアウトに合わせて選択肢を縦に配置
             for i, choice in enumerate(current_turn['choices']):
                 button_text = choice['text']
                 
-                # 選択肢ボタンの表示
                 st.button(
                     button_text, 
                     key=f"choice_{current_turn_index}_{i}_{unique_session_id}", 
                     on_click=handle_choice, 
                     args=(choice['consequence'],),
-                    use_container_width=True # 幅いっぱいにする
+                    use_container_width=True 
                 )
         
     # 会話ロード中のインジケーター (全体カラムの下に表示)
