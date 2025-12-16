@@ -5,6 +5,7 @@ import datetime
 import pytz
 import json
 import time 
+import os # ファイル存在チェックのためにインポート
 
 # ----------------------------------------------------
 # 1. 多言語対応とセッションステートの初期化 (省略)
@@ -58,8 +59,7 @@ st.session_state.setdefault('player_name', 'あなた')
 st.session_state.setdefault('confidence_level', 1)
 st.session_state.setdefault('conversation_history', []) 
 st.session_state.setdefault('favor_ryo', 50)
-# 画像データ保持用を復活
-st.session_state.setdefault('uploaded_image_data', None) 
+st.session_state.setdefault('uploaded_image_data', None) # ファイルアップロード機能がないため、この変数は実質不要
 st.session_state.setdefault(
     'conversation_theme', 
     "金曜日の終業間際、オフィスの休憩スペースにて。主人公は、自分が担当した重要資料に**致命的なデータミスを発見**し、報告するか黙って修正するか迷っている。氷室は、主人公が資料を前に押し黙っていることに気づき、声をかける。"
@@ -254,7 +254,7 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
 # --- 会話画面のレンダリング ---
 
 def render_conversation_ui():
-    """ゲームの会話画面をレンダリングする (画像アップロード＆コンパクトレイアウト再現版)"""
+    """ゲームの会話画面をレンダリングする (GitHub画像直読み＆コンパクトレイアウト版)"""
     
     st.markdown("## 🏢 第1話: エースの葛藤")
     st.markdown(f"目標: まずは氷室と壁を取り払おう。現在の自信ゲージ (Confidence): Lv.{st.session_state['confidence_level']}")
@@ -263,42 +263,36 @@ def render_conversation_ui():
     # コラムの比率を調整 (画像エリアを少し大きく)
     col_img, col_choices = st.columns([1.2, 0.8])
     
+    # --- 画像とステータス表示エリア ---
     with col_img:
         st.markdown("### 👤 氷室涼 (背景)")
         
-        # 🚨 画像アップローダーを再度配置 🚨
-        uploaded_file = st.file_uploader( 
-            "会話の背景画像ファイル (bg_image.jpg など) をアップロード", 
-            type=['jpg', 'jpeg', 'png'],
-            key="conversation_image_uploader" 
-        )
+        # 🚨 修正: st.file_uploader を削除し、ローカルファイル読み込みに置き換え 🚨
+        IMAGE_PATH = "bg_image.jpg" 
 
-        # ファイルがアップロードされた場合、またはセッションにデータがある場合
-        if uploaded_file is not None:
-            # 新しいファイルがアップロードされた場合は、セッションステートを更新
-            st.session_state['uploaded_image_data'] = uploaded_file.getvalue()
-            uploaded_file.seek(0) # ストリームを先頭に戻す
-
-        # 画像の表示
-        if st.session_state['uploaded_image_data'] is not None:
-            # Streamlit Image のキャプションを空にして、画像のみ表示
-            st.image(st.session_state['uploaded_image_data'], caption="", use_column_width="always")
+        if os.path.exists(IMAGE_PATH):
+            try:
+                # ローカル/GitHub上の画像ファイルを直接読み込む
+                st.image(IMAGE_PATH, caption="", use_column_width="always")
+                
+            except Exception as e:
+                st.error(f"画像を読み込めませんでした: {e}")
         else:
-            # 画像がない場合のプレースホルダー（高さを合わせて画像を置くスペースを確保）
-            st.warning("⚠️ 会話の背景画像がアップロードされていません。画像をアップロードしてください。")
+            # ファイルがない場合のプレースホルダー (高さを維持)
+            st.warning(f"⚠️ ファイルが見つかりません: '{IMAGE_PATH}' をGitHubに配置してください。")
             st.markdown(
                 """
                 <div style="height: 250px; background-color: #e0e0e0; 
                 border: 1px solid #cccccc; border-radius: 5px; 
                 display: flex; justify-content: center; align-items: center; 
                 color: #666666; font-weight: bold;">
-                    [画像をアップロードしてください]
+                    [画像をGitHubに配置してください]
                 </div>
                 """,
                 unsafe_allow_html=True
             )
         
-        # 🚨 修正点: 好感度と自信レベルを画像の下に横並びで配置 🚨
+        # 🚨 好感度と自信レベルを画像の下に横並びで配置 🚨
         st.markdown("---")
         
         col_favor, col_conf = st.columns(2)
@@ -309,9 +303,10 @@ def render_conversation_ui():
         with col_conf:
             st.markdown(f"✨ **自信レベル**: **{st.session_state.get('confidence_level', 1)}** / 3")
         
-        st.markdown("---") # ログとの区切りのため
+        st.markdown("---") 
 
 
+    # --- 選択肢表示エリア ---
     with col_choices:
         st.markdown("### ⭕ あなたの選択")
         
