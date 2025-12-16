@@ -6,10 +6,10 @@ import pytz
 import json
 import time 
 import os 
-import random # ランダム選択のため追加
+import random 
 
 # ----------------------------------------------------
-# 0. 会話データ構造の定義 (NEW)
+# 0. 会話データ構造の定義 (変更なし)
 # ----------------------------------------------------
 CONVERSATION_DATA = {
     "DATA_MISTAKE": {
@@ -17,7 +17,8 @@ CONVERSATION_DATA = {
         "theme_description": "金曜日の終業間際、オフィスの休憩スペースにて。主人公は、自分が担当した重要資料に致命的なデータミスを発見し、報告するか黙って修正するか迷っている。",
         "initial_speech": "金曜の終業間際ですが、元気がないようですね。クライアントへの資料、万全ですか？",
         "level_speeches": {
-            1: "(自信Lv.1 / 記録日数1日以上) 進捗状況は？何かを隠しているように見えますよ。資料に問題はないか、今一度確認を。",
+            # Lv.0/Lv.1で使用
+            1: "(自信Lv.1) 進捗状況は？何かを隠しているように見えますよ。資料に問題はないか、今一度確認を。",
             2: "(自信Lv.2) 資料は万全ですか？君が何かを隠しているように見える。ミスを恐れず、状況を説明してください。",
             3: "(自信Lv.3以上) 私は君の能力を信頼しています。ミスを恐れずに、解決策を見つけることが重要だ。"
         },
@@ -34,7 +35,7 @@ CONVERSATION_DATA = {
         "theme_description": "月曜日の午前中、氷室と二人きりの会議室で新規事業のアイデア出し中。主人公は温めていたアイデアを出すべきか迷っている。",
         "initial_speech": "この新規事業のアイデア出し、進捗が悪いですね。あなたの視点でのアイデアを聞かせてください。",
         "level_speeches": {
-            1: "(自信Lv.1 / 記録日数1日以上) 何かアイデアはありますか？遠慮は不要ですが、現実的なものでお願いします。",
+            1: "(自信Lv.1) 何かアイデアはありますか？遠慮は不要ですが、現実的なものでお願いします。",
             2: "(自信Lv.2) 遠慮せずに発言してください。実現可能性より、まず斬新な視点が見たい。",
             3: "(自信Lv.3以上) 私は君の能力を買っています。君ならではのアイデアを期待しています。"
         },
@@ -51,10 +52,10 @@ CONVERSATION_DATA = {
 
 
 # ----------------------------------------------------
-# 1. 多言語対応とセッションステートの初期化 (変更点あり)
+# 1. 多言語対応とセッションステートの初期化 (変更なし)
 # ----------------------------------------------------
 GAME_TRANSLATIONS = {
-    # (変更なし)
+    # (省略)
     "JA": {
         "TITLE": "Reframe Lovers 〜スタートアップの空の下で〜 (プロトタイプ)",
         "LANG_SELECT": "言語を選択 / Select Language",
@@ -100,12 +101,11 @@ st.session_state.setdefault('continuous_days', 0)
 st.session_state.setdefault('game_state', 'START') 
 st.session_state.setdefault('player_gender', 'Female') 
 st.session_state.setdefault('player_name', 'あなた')
-st.session_state.setdefault('confidence_level', 1)
+st.session_state.setdefault('confidence_level', 0) # CSVなしは Lv.0
 st.session_state.setdefault('conversation_history', []) 
 st.session_state.setdefault('favor_ryo', 50)
 st.session_state.setdefault('uploaded_image_data', None) 
 st.session_state.setdefault('feedback_message', None) 
-# 👈 修正点: 会話テーマをセッションステートで管理し、初期値をランダムに設定
 st.session_state.setdefault(
     'conversation_theme_key', 
     random.choice(list(CONVERSATION_DATA.keys()))
@@ -156,13 +156,12 @@ def calculate_streak_from_df(df):
 
 
 # ----------------------------------------------------
-# 3. AI会話生成ロジック (会話データ参照に修正)
+# 3. AI会話生成ロジック (Lv.0のロジックを2択に再修正)
 # ----------------------------------------------------
 def generate_conversation_turn(theme_key):
     confidence_level = st.session_state['confidence_level']
     continuous_days = st.session_state['continuous_days'] 
     
-    # 会話データを取得
     theme_data = CONVERSATION_DATA.get(theme_key, CONVERSATION_DATA['DATA_MISTAKE'])
 
     st.session_state['feedback_message'] = None 
@@ -181,24 +180,25 @@ def generate_conversation_turn(theme_key):
     # --- 選択肢の動的な絞り込みとテキストの取得 ---
     
     available_consequences = []
+    speech = ""
     
-    if continuous_days == 0:
-        # 日数0日（2択）: neutral, favor_down
-        speech = theme_data["level_speeches"][1].replace("(記録日数1日以上)", "(記録日数0日) どうしたらいい...？と動揺している。この場を離れたい気分だ...")
-        available_consequences = ['neutral', 'favor_down']
+    # 🚨 再修正点: 自信レベル0 (CSVなし) のロジック -> 2択に限定
+    if confidence_level == 0:
+        speech = theme_data["initial_speech"] # 導入のセリフを使用
+        available_consequences = ['neutral', 'favor_down'] # 👈 2択に限定
         
     elif confidence_level == 1:
-        # 日数1〜2日（3択）: neutral, favor_down, favor_up
+        # 自信レベル1（日数1〜2日）のロジック -> 3択
         speech = theme_data["level_speeches"][1]
-        available_consequences = ['neutral', 'favor_down', 'favor_up']
+        available_consequences = ['neutral', 'favor_down', 'favor_up'] 
         
     elif confidence_level == 2:
-        # 日数3〜6日（4択）: neutral, favor_down, favor_up, neutral_conf_up
+        # 日数3〜6日（4択）
         speech = theme_data["level_speeches"][2]
         available_consequences = ['neutral', 'favor_down', 'favor_up', 'neutral_conf_up']
         
     elif confidence_level >= 3:
-        # 日数7日以上（5択）: neutral, favor_down, favor_up, neutral_conf_up, favor_up_major
+        # 日数7日以上（5択）
         speech = theme_data["level_speeches"][3]
         available_consequences = ['neutral', 'favor_down', 'favor_up', 'neutral_conf_up', 'favor_up_major']
 
@@ -207,14 +207,19 @@ def generate_conversation_turn(theme_key):
     choices = []
     for consequence, _ in choice_templates:
         if consequence in available_consequences:
-            # 辞書から動的にテキストを取得
             text = theme_data["choices_text"].get(consequence, f"MISSING TEXT for {consequence}")
             choices.append({"text": text, "consequence": consequence})
 
-    # 会話ターン1の特殊処理（導入）
-    if current_turn_count == 1:
-        speech = theme_data["initial_speech"]
+    # 会話ターン2以降は、confidence_levelに応じたセリフを使う
+    if current_turn_count > 1 and confidence_level > 0:
+        # Lv.1以上のセリフを適用 (Lv.0のターン2以降もLv.1のセリフを使わないように注意)
+        speech = theme_data["level_speeches"].get(confidence_level, theme_data["level_speeches"][1])
     
+    # Lv.0でターン2以降の場合、初期スピーチを繰り返す
+    if current_turn_count > 1 and confidence_level == 0:
+         speech = theme_data["level_speeches"][1].replace("(自信Lv.1)", "(自信Lv.0) どうしたらいい...？と動揺している。この場を離れたい気分だ...")
+
+
     return {
         "character_name": "氷室 涼",
         "character_speech": speech,
@@ -223,13 +228,20 @@ def generate_conversation_turn(theme_key):
     }
 
 def handle_choice(choice_consequence):
-    # (変更なし: 好感度/自信レベルのロジックはそのまま)
+    # (変更なし)
     if choice_consequence == "favor_up_major":
         st.session_state['favor_ryo'] = min(100, st.session_state['favor_ryo'] + 15)
         st.session_state['feedback_message'] = ("success", "💖 好感度が大きく上がりました！ (+15)")
     elif choice_consequence == "favor_up":
         st.session_state['favor_ryo'] = min(100, st.session_state['favor_ryo'] + 10)
-        st.session_state['feedback_message'] = ("success", "❤️ 好感度が少し上がりました！ (+10)")
+        
+        # 💡 Lv.0の時に好感度UPを選ぶと、Lv.1に上がるロジックを追加
+        if st.session_state['confidence_level'] == 0:
+             st.session_state['confidence_level'] = 1
+             st.session_state['feedback_message'] = ("success", "❤️ 好感度が少し上がりました！ (+10) 💡 **自信レベルがLv.1になりました！**")
+        else:
+            st.session_state['feedback_message'] = ("success", "❤️ 好感度が少し上がりました！ (+10)")
+            
     elif choice_consequence == "favor_down":
         st.session_state['favor_ryo'] = max(0, st.session_state['favor_ryo'] - 5)
         st.session_state['feedback_message'] = ("error", "💔 好感度が少し下がってしまいました... (-5)")
@@ -252,15 +264,14 @@ st.title(get_text("TITLE"))
 def start_game_action():
     if st.session_state['game_state'] == 'START':
         st.session_state['continuous_days'] = 0 
-        st.session_state['confidence_level'] = 1
-        st.toast("CSVデータなしでゲームを開始します。自信レベルはLv.1、選択肢は2つからスタートです。", icon='ℹ️')
+        st.session_state['confidence_level'] = 0 # CSVなしは Lv.0
+        st.toast("CSVデータなしでゲームを開始します。自信レベルはLv.0、選択肢は2つからスタートです。", icon='ℹ️')
     
     st.session_state['game_state'] = 'CONVERSATION_LOAD'
     st.rerun() 
 # ------------------------------------------------
 
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
-    # (スタート画面のロジックは変更なし)
     LANGUAGES = {"JA": "日本語", "EN": "English"}
     st.session_state['game_language'] = st.selectbox(
         get_text("LANG_SELECT"), 
@@ -268,7 +279,7 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
         format_func=lambda x: LANGUAGES[x]
     )
     st.markdown("---")
-    # ... (初期設定、CSVアップロードのロジックは省略) ...
+    
     st.subheader("👤 Character Setup")
     col_g, col_n = st.columns([0.4, 0.6])
 
@@ -321,9 +332,12 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
         elif days >= 3:
             confidence_level = 2
             confidence_text = "💪 MEDIUM (選択肢が**4つ**に増加！)" if st.session_state['game_language'] == 'JA' else "💪 MEDIUM (4 choices available!)"
-        else:
+        elif days >= 1: # 👈 修正: 1日以上でLv.1
             confidence_level = 1
             confidence_text = "😥 LOW (選択肢は**3つ**。基礎的な選択肢)" if st.session_state['game_language'] == 'JA' else "😥 LOW (3 choices available)"
+        else: # これはデータが壊れているか、処理がミスした場合のフォールバック
+            confidence_level = 0
+            confidence_text = "❌ データエラー (選択肢2つ)"
             
         st.session_state['confidence_level'] = confidence_level 
         
@@ -335,7 +349,8 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
         st.markdown("---")
         
     else:
-        st.info("💡 ポジティブ日記のCSVをアップロードすると、自信レベルが上がり、選択肢が最大5つに増加します。アップロードなしで開始する場合、**自信レベルLv.1 (日数0日)**となり、**選択肢は2つ**に限定されます。")
+        # 💡 UI上の説明を Lv.0, 2択に修正
+        st.info("💡 ポジティブ日記のCSVをアップロードすると、自信レベルが上がり、選択肢が増えます。アップロードなしで開始する場合、**自信レベルはLv.0**となり、**選択肢は2つ**に限定されます。")
         st.markdown("---")
 
 
@@ -353,9 +368,10 @@ def render_conversation_ui():
     
     current_theme_key = st.session_state['conversation_theme_key']
     theme_data = CONVERSATION_DATA.get(current_theme_key)
+    current_conf_level = st.session_state['confidence_level']
 
-    st.markdown(f"## 🏢 {theme_data['theme_title']}") # テーマタイトルを動的に表示
-    st.markdown(f"目標: まずは氷室と壁を取り払おう。現在の自信ゲージ (Confidence): Lv.{st.session_state['confidence_level']}")
+    st.markdown(f"## 🏢 {theme_data['theme_title']}") 
+    st.markdown(f"目標: まずは氷室と壁を取り払おう。現在の自信ゲージ (Confidence): Lv.{current_conf_level}")
     st.markdown(f"**シチュエーション**: {theme_data['theme_description']}")
     st.markdown("---")
     
@@ -392,7 +408,7 @@ def render_conversation_ui():
             st.markdown(f"❤️ **好感度**: **{st.session_state['favor_ryo']}**")
         
         with col_conf:
-            st.markdown(f"⭐ **自信レベル**: **{st.session_state.get('confidence_level', 1)}** / 3")
+            st.markdown(f"⭐ **自信レベル**: **{current_conf_level}** / 3")
         
         if st.session_state['feedback_message']:
             msg_type, msg_text = st.session_state['feedback_message']
@@ -464,7 +480,7 @@ def render_conversation_ui():
         st.markdown("---")
         st.info(f'⚙️ 氷室 涼が思考中... {theme_data["theme_title"]}の次の会話を生成しています...')
         
-        new_turn = generate_conversation_turn(current_theme_key) # テーマキーを渡すように修正
+        new_turn = generate_conversation_turn(current_theme_key) 
         
         if new_turn:
             st.session_state['conversation_history'].append(new_turn) 
