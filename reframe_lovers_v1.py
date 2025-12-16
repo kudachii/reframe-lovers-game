@@ -7,7 +7,7 @@ import json
 import time 
 
 # ----------------------------------------------------
-# 1. 多言語対応とセッションステートの初期化 (省略せず、完全版を維持)
+# 1. 多言語対応とセッションステートの初期化 (省略)
 # ----------------------------------------------------
 GAME_TRANSLATIONS = {
     "JA": {
@@ -170,9 +170,10 @@ def handle_choice(choice_consequence):
 st.set_page_config(layout="centered", page_title=get_text("TITLE"))
 st.title(get_text("TITLE"))
 
+# --- 最初の設定画面 (START/DIARY_LOADED) のロジックは省略 ---
+
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     
-    # --- 初期設定UI (省略) ---
     LANGUAGES = {"JA": "日本語", "EN": "English"}
     st.session_state['game_language'] = st.selectbox(
         get_text("LANG_SELECT"), 
@@ -254,13 +255,12 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
 # --- 会話画面のレンダリング ---
 
 def render_conversation_ui():
-    """ゲームの会話画面をレンダリングする (新レイアウト)"""
+    """ゲームの会話画面をレンダリングする (ログ枠修正版)"""
     
     st.markdown("## 🏢 第1話: エースの葛藤")
     st.markdown(f"目標: まずは氷室と壁を取り払おう。現在の自信ゲージ (Confidence): Lv.{st.session_state['confidence_level']}")
     st.markdown("---")
     
-    # 🚨 新レイアウト: 画像(左) + 選択肢(右) のコラム 🚨
     col_img, col_choices = st.columns([1.5, 1])
     
     with col_img:
@@ -295,16 +295,13 @@ def render_conversation_ui():
             
             for i, choice in enumerate(current_turn['choices']):
                 
-                # ロックされている選択肢の判定
                 is_locked = (choice['consequence'] == 'lock') or \
                             (choice['text'].startswith('(要Lv.3)') and st.session_state['confidence_level'] < 3)
                 
                 button_text = choice['text']
                 if is_locked:
-                    # ロックされている場合はボタンを無効化
                     st.button(button_text, disabled=True, key=f"choice_{current_turn_index}_{i}_{unique_session_id}")
                 else:
-                    # ロックされていない場合はボタンを有効化し、アクションを設定
                     st.button(
                         button_text, 
                         key=f"choice_{current_turn_index}_{i}_{unique_session_id}", 
@@ -312,40 +309,52 @@ def render_conversation_ui():
                         args=(choice['consequence'],)
                     )
         
-        # 好感度と自信レベルの表示
         st.markdown("---")
         st.markdown(f"❤️ **好感度**: **{st.session_state['favor_ryo']}** / 100")
         st.markdown(f"✨ **自信レベル**: **{st.session_state.get('confidence_level', 1)}** / 3")
 
-    # 🚨 新レイアウト: 会話ログは画面下部の独立した枠に配置 🚨
-    st.markdown("---")
-    st.markdown("### 💬 会話ログ")
+    # 🚨 修正点: 会話ログをStreamlitのコンテナ内で確実に表示する 🚨
     
-    # CSSを使用して、固定の高さとスクロールバーを持つ会話枠を作成
+    st.markdown("---")
+    st.markdown("### 💬 氷室の会話ログ")
+    
+    # ログを収めるためのStreamlitコンテナを用意
+    log_container = st.container()
+
+    # CSSをMarkdownとして記述し、Streamlitの要素をラップするスタイルを適用
+    # このCSSは、次のStreamlit要素（log_placeholder）をターゲットにしているわけではないが、
+    # シンプルな外枠として機能させる
     st.markdown(
-        f"""
-        <div style="
-            height: 180px; 
-            overflow-y: scroll; 
-            border: 2px solid #333333; 
-            background-color: #f0f0f0; 
-            padding: 10px; 
-            border-radius: 8px;
-            font-size: 14px;
-        ">
+        """
+        <style>
+            .dialog-box {
+                height: 180px; 
+                overflow-y: auto; /* overflow-y: scroll の代わりに auto を推奨 */
+                border: 2px solid #333333; 
+                background-color: #f0f0f0; 
+                padding: 10px; 
+                border-radius: 8px;
+                font-size: 14px;
+            }
+        </style>
         """, 
         unsafe_allow_html=True
     )
     
-    # 履歴をすべて表示 
-    for turn in st.session_state['conversation_history']:
-        # キャラクターのセリフは強調表示
-        st.markdown(f"**{turn['character_name']}**:")
-        st.markdown(f"> {turn['character_speech']}")
-        st.markdown("---") 
+    # CSSクラスを適用するHTML divタグ内で、ログを表示する
+    log_content = "<div class='dialog-box'>"
     
-    st.markdown("</div>", unsafe_allow_html=True)
-    # --- 会話ログ枠 終わり ---
+    for turn in st.session_state['conversation_history']:
+        # HTMLでセリフを構築。改行<br>、太字<b>を使用
+        log_content += f"<b>{turn['character_name']}</b>:<br>"
+        log_content += f"{turn['character_speech']}<br>"
+        log_content += "<hr style='margin: 5px 0; border-color: #aaaaaa;'>"
+
+    log_content += "</div>"
+    
+    # 構築したHTMLを一度に描画
+    st.markdown(log_content, unsafe_allow_html=True)
+
 
     # 会話ロード中のインジケーター
     if st.session_state['game_state'] == 'CONVERSATION_LOAD':
