@@ -110,7 +110,7 @@ def calculate_streak_from_df(df):
 
 
 # ----------------------------------------------------
-# 3. AI会話生成ロジック (重要修正箇所)
+# 3. AI会話生成ロジック (変更なし)
 # ----------------------------------------------------
 def generate_conversation_turn(conversation_context):
     confidence_level = st.session_state['confidence_level']
@@ -147,14 +147,14 @@ def generate_conversation_turn(conversation_context):
         choices = [c for c in base_choices if c['consequence'] in ['neutral', 'favor_down', 'favor_up']]
         
     elif confidence_level == 2:
-        # 🚨 日数3〜6日: 4択 (中間レベルの恩恵)
+        # 日数3〜6日: 4択 (中間レベルの恩恵)
         speech = f"[ターン {current_turn_count}] (自信Lv.2) 資料は万全ですか？君が何かを隠しているように見える。ミスを恐れず、状況を説明してください。"
         
         # 基本の3つ + 4つ目 (neutral_conf_up) を追加
         choices = [c for c in base_choices if c['consequence'] in ['neutral', 'favor_down', 'favor_up', 'neutral_conf_up']]
         
     elif confidence_level >= 3:
-        # 🚨 日数7日以上: 5択 (最高レベルの恩恵)
+        # 日数7日以上: 5択 (最高レベルの恩恵)
         speech = f"[ターン {current_turn_count}] (自信Lv.3以上) 私は君の能力を信頼しています。ミスを恐れずに、解決策を見つけることが重要だ。"
         
         # 基本の3つ + 4つ目 (neutral_conf_up) + 5つ目 (favor_up_major) を追加
@@ -203,19 +203,17 @@ st.title(get_text("TITLE"))
 
 # --- ゲーム開始ボタンを押した際の処理を定義 ---
 def start_game_action():
-    # CSVファイルが正常にロードされていない状態('START')でボタンが押された場合
     if st.session_state['game_state'] == 'START':
-        st.session_state['continuous_days'] = 0 # 0日として確定
+        st.session_state['continuous_days'] = 0 
         st.session_state['confidence_level'] = 1
         st.toast("CSVデータなしでゲームを開始します。自信レベルはLv.1、選択肢は2つからスタートです。", icon='ℹ️')
     
-    # 状態を会話ロードへ遷移させ、画面を更新
     st.session_state['game_state'] = 'CONVERSATION_LOAD'
     st.rerun() 
 # ------------------------------------------------
 
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
-    # --- 最初の設定画面 ---
+    # (スタート画面のロジックは変更なし)
     LANGUAGES = {"JA": "日本語", "EN": "English"}
     st.session_state['game_language'] = st.selectbox(
         get_text("LANG_SELECT"), 
@@ -245,7 +243,6 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
 
     st.subheader(get_text("CSV_HEADER"))
 
-    # CSVアップローダー
     uploaded_file_csv = st.file_uploader( 
         get_text("CSV_UPLOAD"), 
         type="csv",
@@ -253,23 +250,20 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     )
 
     if uploaded_file_csv is not None and st.session_state['game_state'] == 'START':
-        # CSVロード成功時のロジック
         try:
             df = pd.read_csv(uploaded_file_csv)
             streak = calculate_streak_from_df(df)
             st.session_state['continuous_days'] = streak
             st.session_state['game_state'] = 'DIARY_LOADED'
             st.toast(get_text("DATA_SUCCESS"), icon='💾')
-            st.rerun() # 成功したらステータス表示のために即時リロード
+            st.rerun() 
             
         except Exception as e:
             st.error(get_text("DATA_ERROR") + f"\n{e}")
             st.session_state['continuous_days'] = 0
             st.session_state['game_state'] = 'START'
 
-    # --- ステータス表示 / 非表示 ---
     if st.session_state['game_state'] == 'DIARY_LOADED':
-        # CSVロード成功時のみ、詳細なステータスを表示
         st.success(get_text("DATA_SUCCESS"))
         
         days = st.session_state['continuous_days']
@@ -294,72 +288,102 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
         st.markdown("---")
         
     else:
-        # CSVがまだロードされていない、または失敗した場合は情報メッセージを表示
-        # 自信レベル1 (日数0日) は選択肢2つである旨を明記
         st.info("💡 ポジティブ日記のCSVをアップロードすると、自信レベルが上がり、選択肢が最大5つに増加します。アップロードなしで開始する場合、**自信レベルLv.1 (日数0日)**となり、**選択肢は2つ**に限定されます。")
         st.markdown("---")
 
 
-    # --- ゲーム開始ボタン（常に表示） ---
     st.button(
         get_text("START_GAME"), 
         type="primary", 
-        on_click=start_game_action # on_clickでロジックを処理
+        on_click=start_game_action 
     )
 
 
-# --- 会話画面のレンダリング ---
+# --- 会話画面のレンダリング (大幅修正) ---
 
 def render_conversation_ui():
-    """ゲームの会話画面をレンダリングする"""
+    """ゲームの会話画面をレンダリングする (コンパクトな新しいレイアウト)"""
     
     st.markdown("## 🏢 第1話: エースの葛藤")
-    st.markdown(f"目標: まずは氷室と壁を取り払おう。現在の自信ゲージ (Confidence): Lv.{st.session_state['confidence_level']}")
     st.markdown("---")
     
-    col_img, col_choices = st.columns([1.2, 0.8])
-    
-    # --- 画像とステータス表示エリア ---
-    with col_img:
-        st.markdown("### 👤 氷室涼 (背景)")
-        
-        IMAGE_PATH = "bg_image.jpg" 
+    col_img, col_dialogue = st.columns([1, 1.2]) # 画像エリアを少し狭く、会話エリアを広く
 
+    # --- 1. 画像とステータス表示エリア ---
+    with col_img:
+        
+        # 氷室涼の画像
+        IMAGE_PATH = "bg_image.jpg" 
+        
         if os.path.exists(IMAGE_PATH):
             try:
                 st.image(IMAGE_PATH, caption="", use_column_width="always")
-            except Exception as e:
-                st.error(f"画像を読み込めませんでした: {e}")
+            except:
+                # 画像の代わりにプレースホルダー
+                st.warning(f"⚠️ ファイルが見つかりません: '{IMAGE_PATH}' をGitHubに配置してください。")
         else:
-            st.warning(f"⚠️ ファイルが見つかりません: '{IMAGE_PATH}' をGitHubに配置してください。")
+            # プレースホルダーのHTML/Markdown
             st.markdown(
                 """
-                <div style="height: 250px; background-color: #e0e0e0; 
+                <div style="height: 300px; background-color: #333333; 
                 border: 1px solid #cccccc; border-radius: 5px; 
                 display: flex; justify-content: center; align-items: center; 
-                color: #666666; font-weight: bold;">
-                    [画像をGitHubに配置してください]
+                color: #ffffff; font-weight: bold;">
+                    [氷室 涼 画像エリア]
                 </div>
                 """,
                 unsafe_allow_html=True
             )
         
+        # 好感度と自信レベルの表示
         st.markdown("---")
-        
         col_favor, col_conf = st.columns(2)
         
         with col_favor:
             st.markdown(f"❤️ **好感度**: **{st.session_state['favor_ryo']}**")
         
         with col_conf:
-            st.markdown(f"✨ **自信レベル**: **{st.session_state.get('confidence_level', 1)}** / 3")
+            st.markdown(f"⭐ **自信レベル**: **{st.session_state.get('confidence_level', 1)}** / 3")
         
-        st.markdown("---") 
+        st.markdown("---")
 
-
-    # --- 選択肢表示エリア ---
-    with col_choices:
-        st.markdown("### ⭕ あなたの選択")
+    # --- 2. 会話ログと選択肢エリア ---
+    with col_dialogue:
+        
+        st.markdown("### 💬 氷室の会話ログ")
+        
+        # 会話ログボックスのスタイル
+        st.markdown(
+            """
+            <style>
+                .dialog-box-right {
+                    height: 150px; 
+                    overflow-y: auto; 
+                    border: 1px solid #cccccc; 
+                    background-color: #ffffff; 
+                    padding: 10px; 
+                    border-radius: 5px;
+                    font-size: 15px;
+                    margin-bottom: 20px;
+                }
+            </style>
+            """, 
+            unsafe_allow_html=True
+        )
+        
+        log_content = "<div class='dialog-box-right'>"
+        
+        # 最新の会話のみを表示（画像のデザインに合わせてシンプルに）
+        if st.session_state['conversation_history']:
+            last_turn = st.session_state['conversation_history'][-1]
+            log_content += f"**{last_turn['character_name']}**: {last_turn['character_speech']}"
+            
+        log_content += "</div>"
+        
+        st.markdown(log_content, unsafe_allow_html=True)
+        
+        
+        st.markdown("### ⭕ あなたの選択 (次の行動)")
         
         current_turn = st.session_state['conversation_history'][-1] if st.session_state['conversation_history'] else None
         
@@ -368,53 +392,22 @@ def render_conversation_ui():
 
         if st.session_state['game_state'] == 'CONVERSATION' and current_turn:
             
+            # 画像のレイアウトに合わせて選択肢を縦に配置
             for i, choice in enumerate(current_turn['choices']):
-                
                 button_text = choice['text']
                 
+                # 選択肢ボタンの表示
                 st.button(
                     button_text, 
                     key=f"choice_{current_turn_index}_{i}_{unique_session_id}", 
                     on_click=handle_choice, 
-                    args=(choice['consequence'],)
+                    args=(choice['consequence'],),
+                    use_container_width=True # 幅いっぱいにする
                 )
         
-    # --- 会話ログ ---
-    
-    st.markdown("---")
-    st.markdown("### 💬 氷室の会話ログ")
-    
-    st.markdown(
-        """
-        <style>
-            .dialog-box {
-                height: 150px; 
-                overflow-y: auto; 
-                border: 2px solid #333333; 
-                background-color: #f0f0f0; 
-                padding: 10px; 
-                border-radius: 8px;
-                font-size: 14px;
-            }
-        </style>
-        """, 
-        unsafe_allow_html=True
-    )
-    
-    log_content = "<div class='dialog-box'>"
-    
-    for turn in st.session_state['conversation_history']:
-        log_content += f"<b>{turn['character_name']}</b>:<br>"
-        log_content += f"{turn['character_speech']}<br>"
-        log_content += "<hr style='margin: 5px 0; border-color: #aaaaaa;'>"
-
-    log_content += "</div>"
-    
-    st.markdown(log_content, unsafe_allow_html=True)
-
-
-    # 会話ロード中のインジケーター
+    # 会話ロード中のインジケーター (全体カラムの下に表示)
     if st.session_state['game_state'] == 'CONVERSATION_LOAD':
+        st.markdown("---")
         st.info('⚙️ 氷室 涼が思考中... 次の会話を生成しています...')
         
         new_turn = generate_conversation_turn(st.session_state['conversation_theme']) 
