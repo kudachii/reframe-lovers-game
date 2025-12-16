@@ -58,7 +58,7 @@ st.session_state.setdefault('player_name', 'あなた')
 st.session_state.setdefault('confidence_level', 1)
 st.session_state.setdefault('conversation_history', []) 
 st.session_state.setdefault('favor_ryo', 50)
-st.session_state.setdefault('uploaded_image_data', None) 
+st.session_state.setdefault('uploaded_image_data', None) # このデータは使わなくなります
 st.session_state.setdefault(
     'conversation_theme', 
     "金曜日の終業間際、オフィスの休憩スペースにて。主人公は、自分が担当した重要資料に**致命的なデータミスを発見**し、報告するか黙って修正するか迷っている。氷室は、主人公が資料を前に押し黙っていることに気づき、声をかける。"
@@ -253,40 +253,39 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
 # --- 会話画面のレンダリング ---
 
 def render_conversation_ui():
-    """ゲームの会話画面をレンダリングする (ステータス表示移動版)"""
+    """ゲームの会話画面をレンダリングする (画像アップローダー削除＆コンパクト版)"""
     
     st.markdown("## 🏢 第1話: エースの葛藤")
     st.markdown(f"目標: まずは氷室と壁を取り払おう。現在の自信ゲージ (Confidence): Lv.{st.session_state['confidence_level']}")
     st.markdown("---")
     
-    col_img, col_choices = st.columns([1.5, 1])
+    # 画像のコラムを小さくする (例: 1.0 -> 0.7)
+    col_img, col_choices = st.columns([1.0, 1.0])
     
     with col_img:
-        st.markdown("### 氷室涼 (背景)")
+        st.markdown("### 👤 氷室涼")
         
-        # 画像アップローダー
-        uploaded_file = st.file_uploader( 
-            "会話の背景画像ファイル (bg_image.jpg など) をアップロード", 
-            type=['jpg', 'jpeg', 'png'],
-            key="conversation_image_uploader" 
+        # 🚨 修正点: 画像アップローダーを削除し、デバッグ用のプレースホルダーに置き換え 🚨
+        # --- プレースホルダー画像表示エリア (画像は表示しない) ---
+        st.markdown(
+            """
+            <div style="height: 150px; background-color: #e0e0e0; 
+            border: 1px solid #cccccc; border-radius: 5px; 
+            display: flex; justify-content: center; align-items: center; 
+            color: #666666; font-weight: bold;">
+                [ここにキャラクター画像]
+            </div>
+            """,
+            unsafe_allow_html=True
         )
+        # -----------------------------------------------------------------
 
-        if uploaded_file is not None:
-            st.session_state['uploaded_image_data'] = uploaded_file.getvalue()
-            uploaded_file.seek(0) 
-
-        # セッションステートから画像を表示
-        if st.session_state['uploaded_image_data'] is not None:
-            st.image(st.session_state['uploaded_image_data'], caption="", use_column_width="always")
-        else:
-            st.warning("⚠️ 会話の背景画像がアップロードされていません。画像をアップロードしてください。")
-
-        # 🚨 修正点: 好感度と自信レベルを画像の下に配置 🚨
+        # 好感度と自信レベルを画像の下に配置 (コンパクトに表示)
         st.markdown("---")
-        st.markdown("### 📈 現在のステータス")
+        st.markdown("### 📈 ステータス")
         st.markdown(f"❤️ **好感度**: **{st.session_state['favor_ryo']}** / 100")
         st.markdown(f"✨ **自信レベル**: **{st.session_state.get('confidence_level', 1)}** / 3")
-        st.markdown("---") # ログとの区切りのため
+
 
     with col_choices:
         st.markdown("### ⭕ あなたの選択")
@@ -314,18 +313,17 @@ def render_conversation_ui():
                         args=(choice['consequence'],)
                     )
         
-        # 好感度と自信レベルの表示をこちらからは削除
-
-    # 🚨 会話ログは画面下部の独立した枠に配置 (前回の修正を維持) 🚨
+    # 🚨 会話ログは画面下部の独立した枠に配置 🚨
     
     st.markdown("---")
     st.markdown("### 💬 氷室の会話ログ")
     
+    # CSSをコンパクトに再設定 (高さ150pxに変更)
     st.markdown(
         """
         <style>
             .dialog-box {
-                height: 180px; 
+                height: 150px; /* 高さを縮小 */
                 overflow-y: auto; 
                 border: 2px solid #333333; 
                 background-color: #f0f0f0; 
@@ -341,7 +339,7 @@ def render_conversation_ui():
     log_content = "<div class='dialog-box'>"
     
     for turn in st.session_state['conversation_history']:
-        # HTMLでセリフを構築。改行<br>、太字<b>を使用
+        # HTMLでセリフを構築。
         log_content += f"<b>{turn['character_name']}</b>:<br>"
         log_content += f"{turn['character_speech']}<br>"
         log_content += "<hr style='margin: 5px 0; border-color: #aaaaaa;'>"
