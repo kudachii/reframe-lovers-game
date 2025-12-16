@@ -17,7 +17,6 @@ CONVERSATION_DATA = {
         "theme_description": "金曜日の終業間際、オフィスの休憩スペースにて。主人公は、自分が担当した重要資料に致命的なデータミスを発見し、報告するか黙って修正するか迷っている。",
         "initial_speech": "金曜の終業間際ですが、元気がないようですね。クライアントへの資料、万全ですか？",
         "level_speeches": {
-            # Lv.0/Lv.1で使用
             1: "(自信Lv.1) 進捗状況は？何かを隠しているように見えますよ。資料に問題はないか、今一度確認を。",
             2: "(自信Lv.2) 資料は万全ですか？君が何かを隠しているように見える。ミスを恐れず、状況を説明してください。",
             3: "(自信Lv.3以上) 私は君の能力を信頼しています。ミスを恐れずに、解決策を見つけることが重要だ。"
@@ -101,7 +100,7 @@ st.session_state.setdefault('continuous_days', 0)
 st.session_state.setdefault('game_state', 'START') 
 st.session_state.setdefault('player_gender', 'Female') 
 st.session_state.setdefault('player_name', 'あなた')
-st.session_state.setdefault('confidence_level', 0) # CSVなしは Lv.0
+st.session_state.setdefault('confidence_level', 0) 
 st.session_state.setdefault('conversation_history', []) 
 st.session_state.setdefault('favor_ryo', 50)
 st.session_state.setdefault('uploaded_image_data', None) 
@@ -112,15 +111,21 @@ st.session_state.setdefault(
 )
 
 # ----------------------------------------------------
-# 2. 連続記録日数を計算するコアロジック (変更なし)
+# 2. 連続記録日数を計算するコアロジック (列名検索を強化)
 # ----------------------------------------------------
 def calculate_streak_from_df(df):
     date_column = None
-    if '日付' in df.columns:
-        date_column = '日付'
-    elif 'Date' in df.columns:
-        date_column = 'Date'
-    else:
+    
+    # 🚨 修正箇所: 日付列の候補を増やす
+    DATE_CANDIDATES = ['日付', 'Date', 'datetime', 'timestamp', 'date_local']
+    
+    for col in df.columns:
+        if col in DATE_CANDIDATES:
+            date_column = col
+            break
+
+    if date_column is None:
+        # st.error("⚠️ CSVファイルに適切な日付列（'日付', 'Date', 'datetime' など）が見つかりません。")
         return 0
         
     df = df.dropna(subset=[date_column])
@@ -132,6 +137,7 @@ def calculate_streak_from_df(df):
             infer_datetime_format=True
         ).dt.date
     except Exception as e:
+        # 日付パース失敗時も0を返す
         return 0
 
     df = df.dropna(subset=['date_only'])
@@ -156,7 +162,7 @@ def calculate_streak_from_df(df):
 
 
 # ----------------------------------------------------
-# 3. AI会話生成ロジック (Lv.0のロジックを2択に再修正)
+# 3. AI会話生成ロジック (変更なし)
 # ----------------------------------------------------
 def generate_conversation_turn(theme_key):
     confidence_level = st.session_state['confidence_level']
@@ -182,10 +188,10 @@ def generate_conversation_turn(theme_key):
     available_consequences = []
     speech = ""
     
-    # 🚨 再修正点: 自信レベル0 (CSVなし) のロジック -> 2択に限定
+    # 自信レベル0 (CSVなし または 記録日数が0日) のロジック -> 2択
     if confidence_level == 0:
-        speech = theme_data["initial_speech"] # 導入のセリフを使用
-        available_consequences = ['neutral', 'favor_down'] # 👈 2択に限定
+        speech = theme_data["initial_speech"] 
+        available_consequences = ['neutral', 'favor_down'] 
         
     elif confidence_level == 1:
         # 自信レベル1（日数1〜2日）のロジック -> 3択
@@ -210,15 +216,14 @@ def generate_conversation_turn(theme_key):
             text = theme_data["choices_text"].get(consequence, f"MISSING TEXT for {consequence}")
             choices.append({"text": text, "consequence": consequence})
 
-    # 会話ターン2以降は、confidence_levelに応じたセリフを使う
-    if current_turn_count > 1 and confidence_level > 0:
-        # Lv.1以上のセリフを適用 (Lv.0のターン2以降もLv.1のセリフを使わないように注意)
-        speech = theme_data["level_speeches"].get(confidence_level, theme_data["level_speeches"][1])
-    
-    # Lv.0でターン2以降の場合、初期スピーチを繰り返す
-    if current_turn_count > 1 and confidence_level == 0:
-         speech = theme_data["level_speeches"][1].replace("(自信Lv.1)", "(自信Lv.0) どうしたらいい...？と動揺している。この場を離れたい気分だ...")
-
+    # 会話ターン2以降のセリフ調整
+    if current_turn_count > 1:
+        if confidence_level == 0:
+            # Lv.0のターン2以降は、特別な低レベルのセリフを使用
+            speech = theme_data["level_speeches"][1].replace("(自信Lv.1)", "(自信Lv.0) 何も言わないつもりですか？...不安な様子ですね。")
+        elif confidence_level >= 1:
+            # Lv.1以上のセリフを適用
+            speech = theme_data["level_speeches"].get(confidence_level, theme_data["level_speeches"][1])
 
     return {
         "character_name": "氷室 涼",
@@ -228,14 +233,13 @@ def generate_conversation_turn(theme_key):
     }
 
 def handle_choice(choice_consequence):
-    # (変更なし)
+    # (Lv.0 -> Lv.1 昇格ロジックは維持)
     if choice_consequence == "favor_up_major":
         st.session_state['favor_ryo'] = min(100, st.session_state['favor_ryo'] + 15)
         st.session_state['feedback_message'] = ("success", "💖 好感度が大きく上がりました！ (+15)")
     elif choice_consequence == "favor_up":
         st.session_state['favor_ryo'] = min(100, st.session_state['favor_ryo'] + 10)
         
-        # 💡 Lv.0の時に好感度UPを選ぶと、Lv.1に上がるロジックを追加
         if st.session_state['confidence_level'] == 0:
              st.session_state['confidence_level'] = 1
              st.session_state['feedback_message'] = ("success", "❤️ 好感度が少し上がりました！ (+10) 💡 **自信レベルがLv.1になりました！**")
@@ -264,7 +268,7 @@ st.title(get_text("TITLE"))
 def start_game_action():
     if st.session_state['game_state'] == 'START':
         st.session_state['continuous_days'] = 0 
-        st.session_state['confidence_level'] = 0 # CSVなしは Lv.0
+        st.session_state['confidence_level'] = 0 
         st.toast("CSVデータなしでゲームを開始します。自信レベルはLv.0、選択肢は2つからスタートです。", icon='ℹ️')
     
     st.session_state['game_state'] = 'CONVERSATION_LOAD'
@@ -308,36 +312,54 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     )
 
     if uploaded_file_csv is not None and st.session_state['game_state'] == 'START':
+        
+        # 🚨 修正箇所: 複数のエンコーディングを試行する
         try:
+            # 1. デフォルトのUTF-8で試行
+            uploaded_file_csv.seek(0)
             df = pd.read_csv(uploaded_file_csv)
-            streak = calculate_streak_from_df(df)
-            st.session_state['continuous_days'] = streak
-            st.session_state['game_state'] = 'DIARY_LOADED'
-            st.toast(get_text("DATA_SUCCESS"), icon='💾')
-            st.rerun() 
             
-        except Exception as e:
-            st.error(get_text("DATA_ERROR") + f"\n{e}")
-            st.session_state['continuous_days'] = 0
-            st.session_state['game_state'] = 'START'
+        except UnicodeDecodeError:
+            # 2. UTF-8で失敗した場合、Shift-JIS/cp932で試行 (日本語環境で最も多い)
+            try:
+                uploaded_file_csv.seek(0)
+                df = pd.read_csv(uploaded_file_csv, encoding='cp932')
+                st.toast("⚠️ エンコーディング (文字コード) をShift-JISで読み込みました。", icon='💬')
 
+            except Exception as e_inner:
+                # 3. それでも失敗した場合、エラーを出す
+                st.error(get_text("DATA_ERROR") + f"\n原因: CSVの文字コードか形式が不正です。\nエラー詳細: {e_inner}")
+                st.session_state['continuous_days'] = 0
+                st.session_state['confidence_level'] = 0 
+                st.session_state['game_state'] = 'START'
+                st.rerun() # 中断して再描画
+
+        # 読み込み成功後の処理
+        streak = calculate_streak_from_df(df)
+        st.session_state['continuous_days'] = streak
+        st.session_state['game_state'] = 'DIARY_LOADED'
+        st.toast(get_text("DATA_SUCCESS"), icon='💾')
+        st.rerun() 
+        
     if st.session_state['game_state'] == 'DIARY_LOADED':
         st.success(get_text("DATA_SUCCESS"))
         
         days = st.session_state['continuous_days']
         
+        # 🚨 修正箇所: 日数に応じた confidence_level の再判定ロジック
         if days >= 7:
             confidence_level = 3
             confidence_text = "✨ HIGH (選択肢は最大**5つ**に増加！)" if st.session_state['game_language'] == 'JA' else "✨ HIGH (5 choices available!)"
         elif days >= 3:
             confidence_level = 2
             confidence_text = "💪 MEDIUM (選択肢が**4つ**に増加！)" if st.session_state['game_language'] == 'JA' else "💪 MEDIUM (4 choices available!)"
-        elif days >= 1: # 👈 修正: 1日以上でLv.1
+        elif days >= 1:
             confidence_level = 1
             confidence_text = "😥 LOW (選択肢は**3つ**。基礎的な選択肢)" if st.session_state['game_language'] == 'JA' else "😥 LOW (3 choices available)"
-        else: # これはデータが壊れているか、処理がミスした場合のフォールバック
+        else:
+            # CSVは読み込めたが記録がない場合 (days == 0) は Lv.0 とし、エラー表示を回避
             confidence_level = 0
-            confidence_text = "❌ データエラー (選択肢2つ)"
+            confidence_text = "⚠️ LV. 0 (記録がありません - 選択肢は**2つ**に限定されます)"
             
         st.session_state['confidence_level'] = confidence_level 
         
@@ -349,7 +371,6 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
         st.markdown("---")
         
     else:
-        # 💡 UI上の説明を Lv.0, 2択に修正
         st.info("💡 ポジティブ日記のCSVをアップロードすると、自信レベルが上がり、選択肢が増えます。アップロードなしで開始する場合、**自信レベルはLv.0**となり、**選択肢は2つ**に限定されます。")
         st.markdown("---")
 
