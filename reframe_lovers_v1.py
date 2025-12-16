@@ -65,7 +65,7 @@ st.session_state.setdefault(
 )
 
 # ----------------------------------------------------
-# 2. 連続記録日数を計算するコアロジック (省略)
+# 2. 連続記録日数を計算するコアロジック
 # ----------------------------------------------------
 def calculate_streak_from_df(df):
     date_column = None
@@ -108,7 +108,7 @@ def calculate_streak_from_df(df):
     return streak
 
 # ----------------------------------------------------
-# 3. AI会話生成ロジック (前回と変更なし)
+# 3. AI会話生成ロジック
 # ----------------------------------------------------
 
 def generate_conversation_turn(conversation_context):
@@ -175,8 +175,7 @@ st.title(get_text("TITLE"))
 
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     
-    # 🚨 修正点: 初期設定UIを復元 🚨
-    # --- 初期設定UI ---
+    # --- 初期設定UIを復元 ---
     LANGUAGES = {"JA": "日本語", "EN": "English"}
     st.session_state['game_language'] = st.selectbox(
         get_text("LANG_SELECT"), 
@@ -295,7 +294,8 @@ def render_conversation_ui():
             for turn in st.session_state['conversation_history']:
                 st.markdown(f"**{turn['character_name']}**:")
                 st.markdown(f"> {turn['character_speech']}")
-                st.markdown("---", divider='off')
+                # 🚨 修正点: divider='off' を削除 🚨
+                st.markdown("---") 
                 
         st.markdown("---")
         st.markdown("### ⭕ 選択肢 (次の行動)")
