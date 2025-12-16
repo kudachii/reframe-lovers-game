@@ -7,9 +7,8 @@ import json
 import time 
 
 # ----------------------------------------------------
-# 1. 多言語対応とセッションステートの初期化
+# 1. 多言語対応とセッションステートの初期化 (省略せず、完全版を維持)
 # ----------------------------------------------------
-# ... (GAME_TRANSLATIONS, get_text, セッションステートの初期化部分は省略) ...
 GAME_TRANSLATIONS = {
     "JA": {
         "TITLE": "Reframe Lovers 〜スタートアップの空の下で〜 (プロトタイプ)",
@@ -69,8 +68,44 @@ st.session_state.setdefault(
 # 2. 連続記録日数を計算するコアロジック (省略)
 # ----------------------------------------------------
 def calculate_streak_from_df(df):
-    # ... (省略) ...
-    return 0 
+    date_column = None
+    if '日付' in df.columns:
+        date_column = '日付'
+    elif 'Date' in df.columns:
+        date_column = 'Date'
+    else:
+        return 0
+        
+    df = df.dropna(subset=[date_column])
+    
+    try:
+        df['date_only'] = pd.to_datetime(
+            df[date_column], 
+            errors='coerce', 
+            infer_datetime_format=True
+        ).dt.date
+    except Exception as e:
+        return 0
+
+    df = df.dropna(subset=['date_only'])
+    unique_dates = sorted(list(df['date_only'].unique()), reverse=True)
+    
+    if not unique_dates:
+        return 0
+
+    streak = 0
+    jst = pytz.timezone('Asia/Tokyo')
+    today = datetime.datetime.now(jst).date()
+    current_date_to_check = today
+    
+    for entry_date in unique_dates:
+        if entry_date == current_date_to_check:
+            streak += 1
+            current_date_to_check -= datetime.timedelta(days=1)
+        elif entry_date < current_date_to_check:
+            break
+            
+    return streak
 
 # ----------------------------------------------------
 # 3. AI会話生成ロジック (省略)
@@ -112,7 +147,6 @@ def generate_conversation_turn(conversation_context):
     }
 
 def handle_choice(choice_consequence):
-    # ... (handle_choice 関数は省略) ...
     if choice_consequence == "lock":
         st.warning("この選択肢は、自信レベルLv.3以上が必要です。")
         return 
@@ -138,7 +172,7 @@ st.title(get_text("TITLE"))
 
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     
-    # --- 初期設定UIは省略せずに復元されています ---
+    # --- 初期設定UI (省略) ---
     LANGUAGES = {"JA": "日本語", "EN": "English"}
     st.session_state['game_language'] = st.selectbox(
         get_text("LANG_SELECT"), 
@@ -220,16 +254,17 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
 # --- 会話画面のレンダリング ---
 
 def render_conversation_ui():
-    """ゲームの会話画面をレンダリングする"""
+    """ゲームの会話画面をレンダリングする (新レイアウト)"""
     
     st.markdown("## 🏢 第1話: エースの葛藤")
     st.markdown(f"目標: まずは氷室と壁を取り払おう。現在の自信ゲージ (Confidence): Lv.{st.session_state['confidence_level']}")
     st.markdown("---")
     
-    col_img, col_log = st.columns([1.5, 1])
+    # 🚨 新レイアウト: 画像(左) + 選択肢(右) のコラム 🚨
+    col_img, col_choices = st.columns([1.5, 1])
     
     with col_img:
-        st.markdown("### 氷室涼")
+        st.markdown("### 氷室涼 (背景)")
         
         # 画像アップローダー
         uploaded_file = st.file_uploader( 
@@ -244,38 +279,12 @@ def render_conversation_ui():
 
         # セッションステートから画像を表示
         if st.session_state['uploaded_image_data'] is not None:
-            st.image(st.session_state['uploaded_image_data'], caption="現在の状況", use_column_width="always")
+            st.image(st.session_state['uploaded_image_data'], caption="", use_column_width="always")
         else:
             st.warning("⚠️ 会話の背景画像がアップロードされていません。画像をアップロードしてください。")
 
-    with col_log:
-        st.markdown("### 📝 会話ログ")
-        
-        # 🚨 修正点: コンテナの表示方法を改善し、最新ログが見えるようにする 🚨
-        
-        # chat_container = st.container(height=250) の代わりに、CSSを使った方法を検討します。
-        # Streamlitの最新版では、st.container(height=...)でスクロールバーが出ます。
-        # ここでは、元のコンテナ設定を使いつつ、Markdownの代わりにst.writeを使って試みます。
-
-        st.markdown(
-            f"""
-            <div id="chat-container" style="height: 250px; overflow-y: scroll; padding-right: 15px;">
-            """, 
-            unsafe_allow_html=True
-        )
-
-        # 履歴をすべて表示 
-        for turn in st.session_state['conversation_history']:
-            st.markdown(f"**{turn['character_name']}**:")
-            st.markdown(f"> {turn['character_speech']}")
-            st.markdown("---") # 修正済み
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        # スクロールを最下部に移動させるためのJavaScriptを注入する（Streamlitの制限により難しいため、CSSで対応）
-
-        st.markdown("---")
-        st.markdown("### ⭕ 選択肢 (次の行動)")
+    with col_choices:
+        st.markdown("### ⭕ あなたの選択")
         
         current_turn = st.session_state['conversation_history'][-1] if st.session_state['conversation_history'] else None
         
@@ -286,32 +295,70 @@ def render_conversation_ui():
             
             for i, choice in enumerate(current_turn['choices']):
                 
+                # ロックされている選択肢の判定
                 is_locked = (choice['consequence'] == 'lock') or \
                             (choice['text'].startswith('(要Lv.3)') and st.session_state['confidence_level'] < 3)
                 
                 button_text = choice['text']
                 if is_locked:
-                    st.button(button_text, disabled=True)
+                    # ロックされている場合はボタンを無効化
+                    st.button(button_text, disabled=True, key=f"choice_{current_turn_index}_{i}_{unique_session_id}")
                 else:
+                    # ロックされていない場合はボタンを有効化し、アクションを設定
                     st.button(
                         button_text, 
                         key=f"choice_{current_turn_index}_{i}_{unique_session_id}", 
                         on_click=handle_choice, 
                         args=(choice['consequence'],)
                     )
-                    
-        elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
-            
-            st.info('⚙️ 氷室 涼が思考中... 次の会話を生成しています...')
-            
-            new_turn = generate_conversation_turn(st.session_state['conversation_theme']) 
-            
-            if new_turn:
-                st.session_state['conversation_history'].append(new_turn) 
-                st.session_state['game_state'] = 'CONVERSATION'
-                st.rerun()
-            else:
-                st.error("会話の生成に失敗しました。AIの設定を確認してください。")
+        
+        # 好感度と自信レベルの表示
+        st.markdown("---")
+        st.markdown(f"❤️ **好感度**: **{st.session_state['favor_ryo']}** / 100")
+        st.markdown(f"✨ **自信レベル**: **{st.session_state.get('confidence_level', 1)}** / 3")
+
+    # 🚨 新レイアウト: 会話ログは画面下部の独立した枠に配置 🚨
+    st.markdown("---")
+    st.markdown("### 💬 会話ログ")
+    
+    # CSSを使用して、固定の高さとスクロールバーを持つ会話枠を作成
+    st.markdown(
+        f"""
+        <div style="
+            height: 180px; 
+            overflow-y: scroll; 
+            border: 2px solid #333333; 
+            background-color: #f0f0f0; 
+            padding: 10px; 
+            border-radius: 8px;
+            font-size: 14px;
+        ">
+        """, 
+        unsafe_allow_html=True
+    )
+    
+    # 履歴をすべて表示 
+    for turn in st.session_state['conversation_history']:
+        # キャラクターのセリフは強調表示
+        st.markdown(f"**{turn['character_name']}**:")
+        st.markdown(f"> {turn['character_speech']}")
+        st.markdown("---") 
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    # --- 会話ログ枠 終わり ---
+
+    # 会話ロード中のインジケーター
+    if st.session_state['game_state'] == 'CONVERSATION_LOAD':
+        st.info('⚙️ 氷室 涼が思考中... 次の会話を生成しています...')
+        
+        new_turn = generate_conversation_turn(st.session_state['conversation_theme']) 
+        
+        if new_turn:
+            st.session_state['conversation_history'].append(new_turn) 
+            st.session_state['game_state'] = 'CONVERSATION'
+            st.rerun()
+        else:
+            st.error("会話の生成に失敗しました。AIの設定を確認してください。")
 
 # --- メインロジックの末尾に会話レンダリングを追加 ---
 if st.session_state['game_state'] in ['CONVERSATION', 'CONVERSATION_LOAD']:
