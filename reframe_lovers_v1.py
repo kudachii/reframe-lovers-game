@@ -25,7 +25,7 @@ SYSTEM_PROMPT = """
 
 【氷室 涼の設定】
 - 性格：クール、論理的思考、無口。内面は非常に情熱的で努力家だが、効率を重視しすぎるため、周囲に誤解されやすい。褒められることに慣れていない。
-- 口調：基本的に敬語（「〜です」「〜ます」）。感情が高ぶると稀にタメ口になる。セリフは短く、核心をつく。
+- 口調：基本的に敬語。感情が高ぶると稀にタメ口になる。セリフは短く、核心をつくる。
 - 主人公への態度：仕事中は厳しい。しかし、主人公の努力やポジティブな変化（自信レベル）を誰よりもよく見ている。
 
 【ゲームルールと動的生成】
@@ -82,7 +82,7 @@ def calculate_streak_from_df(df):
         for d in unique_dates:
             if d == check_date: streak += 1; check_date -= datetime.timedelta(days=1)
             elif d < check_date: break
-        return max(streak, 1) # データがあれば最低1日を保証
+        return max(streak, 1)
     except: return 0
 
 def generate_conversation_turn_with_ai():
@@ -92,17 +92,24 @@ def generate_conversation_turn_with_ai():
     prompt = SYSTEM_PROMPT.format(gender=gender_label, conf_level=conf)
     prompt += "\n現在の状況：第1話「エースの葛藤」。金曜日の終業間際、オフィスにて。君（氷室）が担当した重要資料にミスがあることを君は察知しており、主人公の様子を伺いながら声をかける場面。"
 
-    # 404エラー対策：models/ を付与
-    model = genai.GenerativeModel('models/gemini-1.5-flash')
-    try:
-        response = model.generate_content(
-            prompt, 
-            generation_config={"response_mime_type": "application/json"}
-        )
-        return json.loads(response.text)
-    except Exception as e:
-        st.error(f"AI生成エラーが発生しました: {e}")
-        return None
+    # --- 404エラー対策用モデルリスト ---
+    model_names = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'models/gemini-1.5-flash']
+    
+    last_error = None
+    for m_name in model_names:
+        try:
+            model = genai.GenerativeModel(m_name)
+            response = model.generate_content(
+                prompt, 
+                generation_config={"response_mime_type": "application/json"}
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            last_error = e
+            continue # 次のモデル名を試す
+            
+    st.error(f"全モデル名で生成に失敗しました。最後のメッセージ: {last_error}")
+    return None
 
 def handle_choice(consequence):
     if consequence == "favor_up_major": 
@@ -127,7 +134,6 @@ def handle_choice(consequence):
 st.title("🏙️ Reframe Lovers")
 st.caption("〜スタートアップの空の下で〜 (AI Prototype)")
 
-# --- 導入画面 ---
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     col1, col2 = st.columns(2)
     with col1:
@@ -160,9 +166,7 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
         st.session_state['game_state'] = 'CONVERSATION_LOAD'
         st.rerun()
 
-# --- 会話画面 ---
 elif st.session_state['game_state'] in ['CONVERSATION', 'CONVERSATION_LOAD']:
-    # ステータス表示
     col_s1, col_s2 = st.columns(2)
     col_s1.metric("❤️ 好感度", st.session_state['favor_ryo'])
     col_s2.metric("⭐ 自信Lv", st.session_state['confidence_level'])
@@ -175,7 +179,6 @@ elif st.session_state['game_state'] in ['CONVERSATION', 'CONVERSATION_LOAD']:
 
     st.markdown("---")
 
-    # AI会話生成
     if st.session_state['game_state'] == 'CONVERSATION_LOAD':
         with st.spinner("氷室 涼が言葉を選んでいます..."):
             new_turn = generate_conversation_turn_with_ai()
@@ -184,11 +187,8 @@ elif st.session_state['game_state'] in ['CONVERSATION', 'CONVERSATION_LOAD']:
                 st.session_state['game_state'] = 'CONVERSATION'
                 st.rerun()
 
-    # 会話ログ表示
     if st.session_state['conversation_history']:
         last_turn = st.session_state['conversation_history'][-1]
-        
-        # 氷室のセリフ
         with st.chat_message("assistant"):
             st.write(f"**氷室 涼**")
             st.write(last_turn['character_speech'])
@@ -196,7 +196,6 @@ elif st.session_state['game_state'] in ['CONVERSATION', 'CONVERSATION_LOAD']:
         st.write(" ")
         st.caption("あなたの返答を選択してください:")
         
-        # 選択肢ボタン
         for i, choice in enumerate(last_turn['choices']):
             st.button(
                 choice['text'], 
