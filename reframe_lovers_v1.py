@@ -17,10 +17,10 @@ else:
     st.error("APIキーが設定されていません。")
 
 # ----------------------------------------------------
-# 1. セッション管理（ターン管理を追加）
+# 1. セッション管理（KeyError対策版）
 # ----------------------------------------------------
-if 'game_state' not in st.session_state:
-    st.session_state.update({
+def init_session():
+    defaults = {
         'game_state': 'START', 
         'player_gender': 'Female', 
         'player_name': 'あなた',
@@ -28,15 +28,19 @@ if 'game_state' not in st.session_state:
         'confidence_level': 0, 
         'conversation_history': [], 
         'favor_ryo': 50, 
-        'turn_count': 0, # 何回目の会話か
-        'selected_model': None
-    })
+        'turn_count': 0, 
+        'selected_model': None,
+        'feedback_message': None
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+init_session()
 
 # ----------------------------------------------------
 # 2. ロジック関数
 # ----------------------------------------------------
-
-# (calculate_streak_from_df, get_available_model は変更なしのため省略可能ですが、全体版として維持)
 def calculate_streak_from_df(df):
     date_candidates = ['日付', 'Date', 'datetime', 'timestamp', 'date_local']
     date_column = next((col for col in df.columns if col in date_candidates), None)
@@ -66,11 +70,10 @@ def get_available_model():
     except: return None
 
 def generate_conversation_turn_with_ai():
-    gender_label = "女性" if st.session_state['player_gender'] == "Female" else "男性"
-    conf = st.session_state['confidence_level']
-    turn = st.session_state['turn_count']
+    gender_label = "女性" if st.session_state.get('player_gender') == "Female" else "男性"
+    conf = st.session_state.get('confidence_level', 0)
+    turn = st.session_state.get('turn_count', 0)
     
-    # ターンに応じたシチュエーション設定
     situations = [
         "第1段階：ミスが発覚した直後。氷室が冷徹に状況を指摘している。",
         "第2段階：二人で修正作業中。少し疲れが見えるが、氷室はあなたの仕事ぶりを観察している。",
@@ -103,15 +106,12 @@ def generate_conversation_turn_with_ai():
     except: return None
 
 def handle_choice(consequence):
-    # 好感度計算
     if "favor_up_major" in consequence: st.session_state['favor_ryo'] += 15
     elif "favor_up" in consequence: st.session_state['favor_ryo'] += 10
     elif "down" in consequence: st.session_state['favor_ryo'] -= 5
     
-    # ターンを進める
     st.session_state['turn_count'] += 1
     
-    # 3ターン終わったらリザルトへ
     if st.session_state['turn_count'] >= 3:
         st.session_state['game_state'] = 'RESULT'
     else:
@@ -124,19 +124,31 @@ def handle_choice(consequence):
 st.markdown("<h2 style='text-align: center;'>🏙️ Reframe Lovers</h2>", unsafe_allow_html=True)
 
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
-    # (導入画面は変更なし)
     st.session_state['player_gender'] = st.selectbox("性別", ["Female", "Male"], format_func=lambda x: "女性" if x == "Female" else "男性")
     uploaded_file = st.file_uploader("ポジティブ日記CSVをアップロード", type="csv")
     if uploaded_file:
-        df = pd.read_csv(uploaded_file)
+        try:
+            df = pd.read_csv(uploaded_file, encoding='utf-8')
+        except:
+            df = pd.read_csv(uploaded_file, encoding='cp932')
         st.session_state['continuous_days'] = calculate_streak_from_df(df)
         st.session_state['game_state'] = 'DIARY_LOADED'
-    if st.button("ゲームを開始する"):
+
+    if st.session_state['game_state'] == 'DIARY_LOADED':
+        days = st.session_state['continuous_days']
+        st.session_state['confidence_level'] = 3 if days >= 7 else 2 if days >= 3 else 1 if days >= 1 else 0
+        st.success(f"連動完了！ 自信Lv.{st.session_state['confidence_level']}")
+
+    if st.button("ゲームを開始する", type="primary", use_container_width=True):
         st.session_state['game_state'] = 'CONVERSATION_LOAD'
         st.rerun()
 
 elif st.session_state['game_state'] in ['CONVERSATION', 'CONVERSATION_LOAD']:
-    st.write(f"❤️ 好感度: {st.session_state['favor_ryo']} | 💬 Progress: {st.session_state['turn_count']+1}/3")
+    # 安全な値の取得（KeyError対策）
+    f_val = st.session_state.get('favor_ryo', 50)
+    t_val = st.session_state.get('turn_count', 0)
+    st.write(f"❤️ 好感度: {f_val} | 💬 Progress: {t_val + 1}/3")
+    
     col_left, col_right = st.columns([0.4, 0.6])
     with col_left:
         if os.path.exists("bg_image.jpg"): st.image("bg_image.jpg", use_container_width=True)
@@ -152,14 +164,16 @@ elif st.session_state['game_state'] in ['CONVERSATION', 'CONVERSATION_LOAD']:
             last_turn = st.session_state['conversation_history'][-1]
             st.markdown(f"**氷室 涼**")
             st.info(last_turn['character_speech'])
+
     st.markdown("---")
     if st.session_state['conversation_history']:
-        for i, choice in enumerate(st.session_state['conversation_history'][-1]['choices']):
-            st.button(choice['text'], key=f"c_{i}_{st.session_state['turn_count']}", on_click=handle_choice, args=(choice['consequence'],), use_container_width=True)
+        choices = st.session_state['conversation_history'][-1].get('choices', [])
+        for i, choice in enumerate(choices):
+            st.button(choice['text'], key=f"c_{i}_{t_val}", on_click=handle_choice, args=(choice['consequence'],), use_container_width=True)
 
 elif st.session_state['game_state'] == 'RESULT':
     st.subheader("🎉 Result")
-    favor = st.session_state['favor_ryo']
+    favor = st.session_state.get('favor_ryo', 50)
     st.write(f"最終好感度: {favor}")
     if favor >= 80:
         st.success("【ハッピーエンド】氷室はあなたの実力を認め、食事に誘ってくれました。「次はミスなしで。……期待していますよ」")
@@ -169,5 +183,7 @@ elif st.session_state['game_state'] == 'RESULT':
         st.error("【バッドエンド】「……明日、再提出を。失礼します」氷室の目は冷たいままでした。")
     
     if st.button("もう一度プレイする"):
-        st.session_state.clear()
+        # セッションを完全に初期化
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
         st.rerun()
