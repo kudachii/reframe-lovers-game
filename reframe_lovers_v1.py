@@ -9,26 +9,26 @@ import os
 import google.generativeai as genai
 
 # ----------------------------------------------------
-# 0. Gemini APIの設定 (Streamlit CloudのSecretsを使用)
+# 0. Gemini APIの設定
 # ----------------------------------------------------
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 else:
-    st.error("APIキーが設定されていません。StreamlitのSecretsに 'GEMINI_API_KEY' を登録してください。")
+    st.error("APIキーが設定されていません。StreamlitのSecretsを確認してください。")
 
 # ----------------------------------------------------
 # 1. ゴールデンプロンプト
 # ----------------------------------------------------
 SYSTEM_PROMPT = """
 あなたは、テック・スタートアップ「Reframe Lovers」のエース「氷室 涼（ひむろ りょう）」です。
-性格：クール、論理的、無口。内面は情熱的だが効率重視。
+性格：クール、論理的、無口。内面は情熱的だが効率重視。褒められ慣れていない。
 口調：基本的に敬語。感情が高ぶると核心を突く短いセリフを言う。
 ルール：性別 {gender}、自信Lv {conf_level}/3 に合わせてセリフを生成。
 必ず以下のJSON形式のみで出力してください。
 {{
   "character_speech": "氷室のセリフ",
   "choices": [
-    {{"text": "選択肢", "consequence": "favor_up, favor_down, neutral, favor_up_major, neutral_conf_up のいずれか"}}
+    {{"text": "選択肢のテキスト", "consequence": "favor_up, favor_down, neutral, favor_up_major, neutral_conf_up のいずれか"}}
   ]
 }}
 """
@@ -44,7 +44,7 @@ if 'game_state' not in st.session_state:
     })
 
 # ----------------------------------------------------
-# 3. ロジック（連続日数・AI生成）
+# 3. ロジック関数
 # ----------------------------------------------------
 def calculate_streak_from_df(df):
     date_candidates = ['日付', 'Date', 'datetime', 'timestamp', 'date_local']
@@ -77,7 +77,7 @@ def generate_conversation_turn_with_ai():
     gender_label = "女性" if st.session_state['player_gender'] == "Female" else "男性"
     conf = st.session_state['confidence_level']
     prompt = SYSTEM_PROMPT.format(gender=gender_label, conf_level=conf)
-    prompt += "\n第1話：データミス発覚。終業間際のオフィスで、氷室が主人公に声をかける場面。"
+    prompt += "\n第1話：データミス発覚。終業間際のオフィス。氷室が主人公のミスに気づき、静かに声をかける場面。"
     
     target_model = get_available_model()
     if not target_model: return None
@@ -94,10 +94,13 @@ def handle_choice(consequence):
     st.rerun()
 
 # ----------------------------------------------------
-# 4. UI
+# 4. メインUI
 # ----------------------------------------------------
 st.set_page_config(layout="centered", page_title="Reframe Lovers")
-st.title("🏙️ Reframe Lovers")
+
+# タイトル
+st.markdown("<h2 style='text-align: center;'>🏙️ Reframe Lovers</h2>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>〜スタートアップの空の下で〜</p>", unsafe_allow_html=True)
 
 # --- 導入画面 ---
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
@@ -117,36 +120,51 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     if st.session_state['game_state'] == 'DIARY_LOADED':
         days = st.session_state['continuous_days']
         st.session_state['confidence_level'] = 3 if days >= 7 else 2 if days >= 3 else 1 if days >= 1 else 0
-        st.success(f"データロード完了！ 連続日数: {days}日 (自信Lv.{st.session_state['confidence_level']})")
+        st.success(f"連動完了！ 連続日数: {days}日 (自信Lv.{st.session_state['confidence_level']})")
 
     if st.button("ゲームを開始する", type="primary", use_container_width=True):
         st.session_state['game_state'] = 'CONVERSATION_LOAD'
         st.rerun()
 
-# --- 会話画面 ---
+# --- 会話画面 (修正の目玉) ---
 elif st.session_state['game_state'] in ['CONVERSATION', 'CONVERSATION_LOAD']:
-    # ステータス表示
-    st.write(f"❤️ 好感度: {st.session_state['favor_ryo']} | ⭐ 自信Lv: {st.session_state['confidence_level']}")
+    # ステータスを1行に
+    st.markdown(f"❤️ **好感度:** {st.session_state['favor_ryo']} / 100 | ⭐ **自信:** Lv.{st.session_state['confidence_level']}")
     
-    # 【画像表示エリア】
-    if os.path.exists("bg_image.jpg"):
-        st.image("bg_image.jpg", use_container_width=True)
-    else:
-        st.warning("画像ファイル 'bg_image.jpg' が見つかりません。")
+    # メインレイアウト分割
+    col_left, col_right = st.columns([0.4, 0.6])
 
-    if st.session_state['game_state'] == 'CONVERSATION_LOAD':
-        with st.spinner("氷室 涼が思考中..."):
-            new_turn = generate_conversation_turn_with_ai()
-            if new_turn:
-                st.session_state['conversation_history'].append(new_turn)
-                st.session_state['game_state'] = 'CONVERSATION'
-                st.rerun()
+    with col_left:
+        if os.path.exists("bg_image.jpg"):
+            st.image("bg_image.jpg", use_container_width=True)
+        else:
+            st.warning("画像なし")
 
+    with col_right:
+        if st.session_state['game_state'] == 'CONVERSATION_LOAD':
+            with st.spinner("氷室が思考中..."):
+                new_turn = generate_conversation_turn_with_ai()
+                if new_turn:
+                    st.session_state['conversation_history'].append(new_turn)
+                    st.session_state['game_state'] = 'CONVERSATION'
+                    st.rerun()
+
+        if st.session_state['conversation_history']:
+            last_turn = st.session_state['conversation_history'][-1]
+            st.markdown(f"**氷室 涼**")
+            # セリフを読みやすく吹き出し風の背景に
+            st.info(last_turn['character_speech'])
+
+    # 選択肢エリア
+    st.markdown("---")
     if st.session_state['conversation_history']:
         last_turn = st.session_state['conversation_history'][-1]
-        with st.chat_message("assistant"):
-            st.write(f"**氷室 涼**")
-            st.write(last_turn['character_speech'])
-        
+        st.caption("返答を選んでください：")
         for i, choice in enumerate(last_turn['choices']):
-            st.button(choice['text'], key=f"c_{i}_{len(st.session_state['conversation_history'])}", on_click=handle_choice, args=(choice['consequence'],), use_container_width=True)
+            st.button(
+                choice['text'], 
+                key=f"c_{i}_{len(st.session_state['conversation_history'])}", 
+                on_click=handle_choice, 
+                args=(choice['consequence'],), 
+                use_container_width=True
+            )
