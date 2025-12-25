@@ -114,9 +114,8 @@ elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
             st.rerun()
 
 # 3. メイン・私語プレイ画面
-elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
-    # 【修正②】プログレスバーのエラー回避
-    # min(max(値, 0.0), 1.0) を使うことで、0〜100の範囲外になってもエラーを防ぎます
+    elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
+    # --- ステータス表示 ---
     favor_val = st.session_state['favor_ryo'] / 100.0
     safe_favor = min(max(favor_val, 0.0), 1.0)
     
@@ -124,42 +123,78 @@ elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
     st.progress(safe_favor) 
     st.divider()
 
+    # --- メインエリア（画像とセリフ） ---
     col_img, col_chat = st.columns([0.4, 0.6])
+    
     with col_img:
-        # 【修正ポイント】画像表示の安定化
         image_path = "bg_image.jpg"
         if os.path.exists(image_path):
             st.image(image_path)
         else:
-            # 画像ファイルがない場合に表示する、氷室のイメージ（クールなビジネスマン）
             st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400", 
                      caption="氷室 涼 (イメージ)")
-            st.caption("※bg_image.jpg を配置すると差し替わります")
 
+    with col_chat:
+        st.markdown(f"### 氷室 涼")
+        # 状態に応じて表示を切り分け
+        if st.session_state['game_state'] == 'FREE_CHAT':
+            # 私語モード：チャット履歴を表示
+            for m in st.session_state['free_chat_history']:
+                role = "あなた" if m['role'] == "あなた" else "氷室"
+                st.write(f"**{role}**: {m['content']}")
+        else:
+            # メインプレイ：最新の生成セリフを表示
+            if st.session_state['conversation_history']:
+                speech = st.session_state['conversation_history'][-1].get('character_speech', "……")
+                st.info(speech)
+            else:
+                st.info("「……お疲れ様です。まだ残っていたんですか」")
 
     st.divider()
     
-    # 選択肢ボタン
+    # --- 操作エリア ---
+    # 1. 選択肢ボタン（MAIN_PLAY時のみ）
     if st.session_state['game_state'] == 'MAIN_PLAY':
-        choices = st.session_state['conversation_history'][-1]['choices']
-        for i, c in enumerate(choices):
-            if st.button(c['text'], key=f"btn_{i}", use_container_width=True):
-                # 好感度加算（自信Lvによる倍率反映）
-                score = c['score']
-                change = score if score <= 0 else int(score * {0: 0.5, 1: 1.0, 2: 1.5, 3: 2.0}.get(st.session_state['confidence_level'], 1.0))
-                st.session_state['favor_ryo'] += change
-                st.session_state['turn_count'] += 1
-                
-                # 私語モード判定
-                max_c, ryo_msg = get_free_chat_config(st.session_state['favor_ryo'])
-                if max_c > 0:
-                    st.session_state['game_state'] = 'FREE_CHAT'
-                    st.session_state['free_chat_history'] = [{"role": "氷室", "content": ryo_msg}]
-                    st.session_state['free_chat_count'] = 0
-                else:
-                    st.toast(ryo_msg) # 拒絶メッセージ
-                    st.session_state['game_state'] = 'CONVERSATION_LOAD'
+        if st.session_state['conversation_history']:
+            choices = st.session_state['conversation_history'][-1]['choices']
+            for i, c in enumerate(choices):
+                if st.button(c['text'], key=f"btn_{st.session_state['turn_count']}_{i}", use_container_width=True):
+                    # スコア計算
+                    score = c['score']
+                    change = score if score <= 0 else int(score * {0: 0.5, 1: 1.0, 2: 1.5, 3: 2.0}.get(st.session_state['confidence_level'], 1.0))
+                    st.session_state['favor_ryo'] += change
+                    st.session_state['turn_count'] += 1
+                    
+                    # 私語モード判定
+                    max_c, ryo_msg = get_free_chat_config(st.session_state['favor_ryo'])
+                    if max_c > 0:
+                        st.session_state['game_state'] = 'FREE_CHAT'
+                        st.session_state['free_chat_history'] = [{"role": "氷室", "content": ryo_msg}]
+                        st.session_state['free_chat_count'] = 0
+                    else:
+                        st.toast(ryo_msg)
+                        st.session_state['game_state'] = 'CONVERSATION_LOAD'
+                    st.rerun()
+
+    # 2. 私語入力欄（FREE_CHAT時のみ）
+    elif st.session_state['game_state'] == 'FREE_CHAT':
+        max_c, _ = get_free_chat_config(st.session_state['favor_ryo'])
+        if st.session_state['free_chat_count'] < max_c:
+            chat_input = st.chat_input("話しかける...")
+            if chat_input:
+                st.session_state['free_chat_history'].append({"role": "あなた", "content": chat_input})
+                res = generate_free_chat_response(chat_input)
+                st.session_state['free_chat_history'].append({"role": "氷室", "content": res})
+                st.session_state['free_chat_count'] += 1
                 st.rerun()
+        
+        if st.button("次の展開へ進む", type="primary", use_container_width=True):
+            if st.session_state['turn_count'] >= 3:
+                st.session_state['game_state'] = 'RESULT'
+            else:
+                st.session_state['game_state'] = 'CONVERSATION_LOAD'
+            st.rerun()
+
 
     # 私語入力欄
     elif st.session_state['game_state'] == 'FREE_CHAT':
