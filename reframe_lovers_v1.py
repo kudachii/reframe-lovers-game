@@ -149,17 +149,29 @@ elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
 
     with col_chat:
         st.markdown(f"### 氷室 涼")
-        if st.session_state['game_state'] == 'FREE_CHAT':
-            for m in st.session_state['free_chat_history']:
-                label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
-                st.write(f"**{label}**: {m['content']}")
-        else:
-            if st.session_state.get('conversation_history'):
-                latest = st.session_state['conversation_history'][-1]
-                speech = latest.get('character_speech') or latest.get('speech') or "……"
-                st.info(speech)
+        
+        # 高さを 400px に固定し、中身が溢れたらスクロールするように設定
+        chat_container = st.container(height=400)
+        
+        with chat_container:
+            # 1. 私語モード（FREE_CHAT）
+            if st.session_state['game_state'] == 'FREE_CHAT':
+                if st.session_state['free_chat_history']:
+                    for m in st.session_state['free_chat_history']:
+                        label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
+                        # チャットっぽくメッセージを表示
+                        st.chat_message("assistant" if label == "氷室" else "user").write(m['content'])
+                else:
+                    st.info("「……何か、言いたいことでもあるんですか？」")
+
+            # 2. メインプレイ（MAIN_PLAY）
             else:
-                st.info("「……お疲れ様です。まだ残っていたんですか」")
+                if st.session_state.get('conversation_history'):
+                    latest_data = st.session_state['conversation_history'][-1]
+                    speech = latest_data.get('character_speech') or latest_data.get('speech') or "……"
+                    st.chat_message("assistant").write(speech)
+                else:
+                    st.chat_message("assistant").write("「……お疲れ様です。まだ残っていたんですか」")
 
     st.divider()
 
