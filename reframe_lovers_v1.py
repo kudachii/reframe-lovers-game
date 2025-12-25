@@ -125,15 +125,17 @@ elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
     st.divider()
 
     col_img, col_chat = st.columns([0.4, 0.6])
-    with col_img: st.info("氷室 涼") # ここに画像
-    
-    with col_chat:
-        st.markdown("**氷室 涼**")
-        if st.session_state['game_state'] == 'FREE_CHAT':
-            for m in st.session_state['free_chat_history'][-4:]:
-                st.write(f"**{m['role']}**: {m['content']}")
+    with col_img:
+        # 【修正ポイント】画像表示の安定化
+        image_path = "bg_image.jpg"
+        if os.path.exists(image_path):
+            st.image(image_path)
         else:
-            st.info(st.session_state['conversation_history'][-1]['character_speech'])
+            # 画像ファイルがない場合に表示する、氷室のイメージ（クールなビジネスマン）
+            st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400", 
+                     caption="氷室 涼 (イメージ)")
+            st.caption("※bg_image.jpg を配置すると差し替わります")
+
 
     st.divider()
     
