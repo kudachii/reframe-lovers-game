@@ -149,10 +149,7 @@ elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
             st.rerun()
 
     # --- 2. メイン画面：CSSで余白調整 ---
-    st.markdown("<style>.block-container { padding-top: 1rem; }</style>", unsafe_allow_html=True)
-
-    # 横並びレイアウト（画像4 : チャット6）
-    # カラムの隙間を最小限にして、上辺を揃えるCSS
+    # 上辺を揃えるためのCSS
     st.markdown("""
         <style>
         [data-testid="column"] { align-self: flex-start !important; }
@@ -162,26 +159,27 @@ elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
     col_img, col_chat = st.columns([0.4, 0.6])
 
     with col_img:
-        # 1. 画像を一番上に配置
+        # 1. 画像
         image_path = "bg_image.jpg"
         if os.path.exists(image_path):
             st.image(image_path, use_container_width=True)
         else:
             st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400", use_container_width=True)
         
-        # 2. 画像のすぐ下に「考え中」メッセージ
+        # 2. 名前（画像の下に太字で配置）
+        st.markdown("<div style='text-align: center; font-weight: bold; font-size: 1.1rem;'>氷室 涼</div>", unsafe_allow_html=True)
+
+        # 3. 「考え中」メッセージ（名前のすぐ下）
         if st.session_state['game_state'] == 'FREE_CHAT':
              max_c, _ = get_free_chat_config(st.session_state['favor_ryo'])
              if st.session_state.get('free_chat_count', 0) < max_c:
-                 st.caption("⏳ 氷室が言葉を選んでいます......")
+                 # 中央寄せにしてスッキリ見せる
+                 st.markdown("<div style='text-align: center; color: gray; font-size: 0.8rem;'>⏳ 言葉を選んでいます...</div>", unsafe_allow_html=True)
 
     with col_chat:
-        # 3. チャット欄（名前をコンテナの中に入れるか、高さを調整して開始位置を合わせる）
-        # 名前表示（画像の上辺と合わせるため、余計な改行を入れない）
-        st.markdown("<div style='margin-top: -10px;'><b>氷室 涼</b></div>", unsafe_allow_html=True)
-        
-        # コンテナの高さを画像とバランスが取れる315px程度に設定
-        chat_container = st.container(height=315)
+        # チャット欄を一番上から開始
+        # 高さを画像＋名前のスペースに合わせて調整（350px前後が目安）
+        chat_container = st.container(height=350)
         with chat_container:
             if st.session_state['game_state'] == 'FREE_CHAT':
                 for m in st.session_state['free_chat_history']:
