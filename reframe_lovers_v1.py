@@ -79,7 +79,8 @@ def generate_main_scenario():
 # --- UI表示 ---
 st.title("🏙️ Reframe Lovers")
 
-# 1. スタート画面（復元完了！）
+# 1. スタート・設定画面 (修正版)
+# game_stateが 'START' または 'DIARY_LOADED' の間は、設定項目を表示し続ける
 if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     st.subheader("📝 プレイヤー設定")
     st.session_state['player_name'] = st.text_input("プレイヤー名", value=st.session_state['player_name'])
@@ -87,21 +88,27 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
     
     st.markdown("---")
     st.subheader("🔗 ポジティブ日記の同期")
-    uploaded_file = st.file_uploader("日記CSVをアップロードして自信Lvを同期", type="csv")
+    st.caption("CSVをアップロードすると、自信レベルが星（⭐）として反映されます。")
+    
+    # 常にアップローダーを表示
+    uploaded_file = st.file_uploader("日記CSVをアップロード", type="csv")
     
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
             st.session_state['confidence_level'] = calculate_confidence(df)
+            # 状態を更新するが、画面は切り替えない
             st.session_state['game_state'] = 'DIARY_LOADED'
-            st.success(f"同期完了！ 自信Lv.{st.session_state['confidence_level']} (⭐×{st.session_state['confidence_level']})")
-        except:
-            st.error("CSVの形式が正しくありません。")
+            st.success(f"同期完了！ 現在の自信Lv: {'⭐' * st.session_state['confidence_level']}")
+        except Exception as e:
+            st.error(f"CSVの読み取りに失敗しました: {e}")
 
+    st.markdown("---")
+    # すべての設定が終わったらこのボタンでゲーム開始
     if st.button("氷室に会いに行く", use_container_width=True, type="primary"):
         st.session_state['game_state'] = 'CONVERSATION_LOAD'
         st.rerun()
-
+        
 # 2. 会話読み込み
 elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
     with st.spinner("氷室が言葉を選んでいます..."):
