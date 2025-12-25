@@ -160,7 +160,12 @@ elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
             st.image(image_path, use_container_width=True)
         else:
             st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400", use_container_width=True)
-
+        # --- ここに追加！画像の下にメッセージを表示 ---
+        if st.session_state['game_state'] == 'FREE_CHAT':
+             # 回数制限に達していない時だけ表示
+             max_c, _ = get_free_chat_config(st.session_state['favor_ryo'])
+             if st.session_state.get('free_chat_count', 0) < max_c:
+                 st.caption("⏳ 氷室が言葉を選んでいます......")
     with col_chat:
         st.markdown(f"##### 氷室 涼")
         chat_container = st.container(height=300)
