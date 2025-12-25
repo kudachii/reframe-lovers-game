@@ -134,7 +134,7 @@ elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
             st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400", 
                      caption="氷室 涼 (イメージ)")
 
-    with col_chat:
+with col_chat:
         st.markdown(f"### 氷室 涼")
         
         # 1. 私語モード（FREE_CHAT）
@@ -167,6 +167,7 @@ elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
                 # 履歴がまだない時の初期セリフ
                 st.info("「……お疲れ様です。まだ残っていたんですか」")
 
+   
 
     st.divider()
     
