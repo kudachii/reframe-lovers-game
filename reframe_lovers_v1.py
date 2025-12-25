@@ -131,71 +131,69 @@ elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
             st.rerun()
 
 elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
-    # --- 1. サイドバー（スマホ版では左上の「>」で開閉可能） ---
+    # --- 1. サイドバー（タイトルとステータスを統合） ---
     with st.sidebar:
-        st.title("📊 Status")
+        st.title("🏙️ Reframe Lovers") # タイトルをここに移動
+        st.divider()
+        
+        st.subheader("📊 Status")
         favor_val = st.session_state['favor_ryo']
         st.metric("❤️ 氷室からの信頼度", f"{favor_val}%")
         st.progress(min(max(favor_val / 100.0, 0.0), 1.0))
-        
-        st.subheader(f"✨ 自信: {'⭐' * st.session_state['confidence_level']}")
+        st.write(f"✨ 自信: {'⭐' * st.session_state['confidence_level']}")
         
         st.divider()
-        # ギャル先生からのメンターメッセージ [2025-12-21 追加要素]
+        # ギャル先生のメンターメッセージ
         if st.session_state['confidence_level'] <= 1:
-            st.info("🌺 ギャル先生:「まずは日記で自分をアゲてこ！氷室の冷たさは、アンタの伸びしろっしょ！✨」")
+            st.info("🌺 ギャル先生:「まずは日記で自分をアゲてこ！✨」")
         else:
-            st.success("🌺 ギャル先生:「ヤバい、マジで自信ついてきてんじゃん！氷室も内心ビビってるはずだよ、イケイケ〜！🔥」")
+            st.success("🌺 ギャル先生:「マジいい感じ！イケイケ〜！🔥」")
 
         if st.button("タイトルに戻る"):
             st.session_state.clear()
             st.rerun()
 
-    # --- 2. メイン画面（画像とチャット） ---
-    col_img, col_chat = st.columns([0.4, 0.6])
+    # --- 2. メイン画面：垂直レイアウト ---
+    
+    # ① 氷室の画像（上部に配置）
+    image_path = "bg_image.jpg"
+    if os.path.exists(image_path):
+        st.image(image_path, use_container_width=True)
+    else:
+        st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=800", 
+                 caption="氷室 涼", use_container_width=True)
 
-    with col_img:
-        image_path = "bg_image.jpg"
-        if os.path.exists(image_path):
-            st.image(image_path)
+    # ② チャット欄（画像の下に配置）
+    st.markdown(f"### 氷室 涼")
+    chat_container = st.container(height=350) # 高さを少し調整
+    
+    with chat_container:
+        if st.session_state['game_state'] == 'FREE_CHAT':
+            for m in st.session_state['free_chat_history']:
+                label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
+                st.chat_message("assistant" if label == "氷室" else "user").write(m['content'])
         else:
-            # 代替画像
-            st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400", caption="氷室 涼")
-
-    with col_chat:
-        st.markdown(f"### 氷室 涼")
-        
-        # 【修正】チャットコンテナの高さを固定
-        chat_container = st.container(height=400)
-        
-        with chat_container:
-            if st.session_state['game_state'] == 'FREE_CHAT':
-                for m in st.session_state['free_chat_history']:
-                    label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
-                    st.chat_message("assistant" if label == "氷室" else "user").write(m['content'])
+            if st.session_state.get('conversation_history'):
+                latest = st.session_state['conversation_history'][-1]
+                speech = latest.get('character_speech') or latest.get('speech') or "……。"
+                st.chat_message("assistant").write(speech)
             else:
-                if st.session_state.get('conversation_history'):
-                    latest = st.session_state['conversation_history'][-1]
-                    speech = latest.get('character_speech') or latest.get('speech') or "……。"
-                    st.chat_message("assistant").write(speech)
-                else:
-                    st.chat_message("assistant").write("「……お疲れ様です。まだ残っていたんですか」")
+                st.chat_message("assistant").write("「……お疲れ様です。まだ残っていたんですか」")
 
     st.divider()
 
-    # --- 3. 操作エリア ---
+    # ③ 操作エリア（最下部に固定されるイメージ）
     if st.session_state['game_state'] == 'MAIN_PLAY':
         if st.session_state['conversation_history']:
             choices = st.session_state['conversation_history'][-1].get('choices', [])
+            # 選択肢を押しやすいように1列で表示
             for i, c in enumerate(choices):
                 if st.button(c['text'], key=f"btn_{st.session_state['turn_count']}_{i}", use_container_width=True):
-                    # 好感度計算
                     score = c.get('score', 0)
                     mult = {0: 0.5, 1: 1.0, 2: 1.5, 3: 2.0}.get(st.session_state['confidence_level'], 1.0)
                     st.session_state['favor_ryo'] += int(score * mult) if score > 0 else score
                     st.session_state['turn_count'] += 1
                     
-                    # 私語モード判定
                     max_c, ryo_msg = get_free_chat_config(st.session_state['favor_ryo'])
                     if max_c > 0:
                         st.session_state['game_state'] = 'FREE_CHAT'
@@ -205,6 +203,24 @@ elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
                         st.toast(ryo_msg)
                         st.session_state['game_state'] = 'CONVERSATION_LOAD'
                     st.rerun()
+
+    elif st.session_state['game_state'] == 'FREE_CHAT':
+        max_c, _ = get_free_chat_config(st.session_state['favor_ryo'])
+        if st.session_state['free_chat_count'] < max_c:
+            chat_input = st.chat_input("氷室に話しかける...")
+            if chat_input:
+                st.session_state['free_chat_history'].append({"role": "あなた", "content": chat_input})
+                res = generate_free_chat_response(chat_input)
+                st.session_state['free_chat_history'].append({"role": "氷室", "content": res})
+                st.session_state['free_chat_count'] += 1
+                st.rerun()
+        
+        if st.button("次の展開へ進む", type="primary", use_container_width=True):
+            if st.session_state['turn_count'] >= 3:
+                st.session_state['game_state'] = 'RESULT'
+            else:
+                st.session_state['game_state'] = 'CONVERSATION_LOAD'
+            st.rerun()
 
     elif st.session_state['game_state'] == 'FREE_CHAT':
         max_c, _ = get_free_chat_config(st.session_state['favor_ryo'])
