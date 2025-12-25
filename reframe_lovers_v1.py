@@ -52,15 +52,19 @@ def get_free_chat_config(favor):
     if favor >= 31: return 3, "手短にお願いします。今は業務時間内ですので。"
     return 0, "私用の会話は禁止されています。仕事に戻ってください。"
 
-# --- AI生成（私語） ---
+# --- 私語モードも「氷室らしさ」を徹底 ---
 def generate_free_chat_response(user_input):
     favor = st.session_state['favor_ryo']
-    _, message = get_free_chat_config(favor)
-    prompt = f"氷室涼(好感度{favor})として回答。態度:{message}。入力:{user_input}。短く返して。"
+    prompt = f"""あなたは氷室涼です。現在{st.session_state['player_name']}と私事の話をしています。
+    好感度{favor}に基づいた態度をとってください。
+    - 80未満: 「時間の無駄です」「本件に関係ありますか？」と冷たく。
+    - 90以上: 「……あなたの話は、なぜか耳に残る。不思議だ」と少しだけ心を開く。
+    絶対に弱気な発言や、媚びるような態度は見せないでください。
+    入力: {user_input}"""
     try:
         model = genai.GenerativeModel(get_best_model())
         return model.generate_content(prompt).text
-    except: return "……今は話せません。"
+    except: return "……今は話す必要を感じません。"
 
 # --- AI生成（メイン）のプロンプトを硬派に修正 ---
 def generate_main_scenario():
