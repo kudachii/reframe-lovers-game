@@ -136,19 +136,37 @@ elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
 
     with col_chat:
         st.markdown(f"### 氷室 涼")
-        # 状態に応じて表示を切り分け
+        
+        # 1. 私語モード（FREE_CHAT）
         if st.session_state['game_state'] == 'FREE_CHAT':
-            # 私語モード：チャット履歴を表示
-            for m in st.session_state['free_chat_history']:
-                role = "あなた" if m['role'] == "あなた" else "氷室"
-                st.write(f"**{role}**: {m['content']}")
-        else:
-            # メインプレイ：最新の生成セリフを表示
-            if st.session_state['conversation_history']:
-                speech = st.session_state['conversation_history'][-1].get('character_speech', "……")
-                st.info(speech)
+            if st.session_state['free_chat_history']:
+                for m in st.session_state['free_chat_history']:
+                    # roleが「氷室」か「assistant」か「あなた」か「user」かにかかわらず表示
+                    label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
+                    st.write(f"**{label}**: {m['content']}")
             else:
+                st.info("「……何か、言いたいことでもあるんですか？」")
+
+        # 2. メインプレイ（MAIN_PLAY）
+        else:
+            # 履歴が存在するか確認
+            if st.session_state.get('conversation_history') and len(st.session_state['conversation_history']) > 0:
+                # 最新のデータを取得
+                latest_data = st.session_state['conversation_history'][-1]
+                
+                # 'character_speech' または 'speech' というキーでセリフを探す
+                speech = latest_data.get('character_speech') or latest_data.get('speech')
+                
+                if speech:
+                    st.info(speech)
+                else:
+                    # キーが見つからない場合、データ構造をそのまま表示してデバッグ（開発用）
+                    st.warning("セリフデータの読み込みに失敗しました。")
+                    # st.write(latest_data) # ←もし表示されないなら、この行のコメントアウトを外すと中身が見えます
+            else:
+                # 履歴がまだない時の初期セリフ
                 st.info("「……お疲れ様です。まだ残っていたんですか」")
+
 
     st.divider()
     
