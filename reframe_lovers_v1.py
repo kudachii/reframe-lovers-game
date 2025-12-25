@@ -100,11 +100,12 @@ if st.session_state['game_state'] in ['START', 'DIARY_LOADED']:
         except:
             st.error("CSV読み込みエラー")
 
+# --- 1. 設定画面（ここが前のifブロック） ---
     if st.button("氷室に会いに行く", use_container_width=True, type="primary"):
         st.session_state['game_state'] = 'CONVERSATION_LOAD'
         st.rerun()
-        
-# 2. 会話読み込み
+
+# --- 2. 会話読み込み画面 ---
 elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
     with st.spinner("氷室が言葉を選んでいます..."):
         new_turn = generate_main_scenario()
@@ -113,78 +114,51 @@ elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
             st.session_state['game_state'] = 'MAIN_PLAY'
             st.rerun()
 
-# 3. メイン・私語プレイ画面
-    elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
-    # --- ステータス表示 ---
+# --- 3. メインプレイ & 私語画面 ---
+elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
+    # ステータス表示
     favor_val = st.session_state['favor_ryo'] / 100.0
     safe_favor = min(max(favor_val, 0.0), 1.0)
-    
     st.write(f"❤️ 信頼度: {st.session_state['favor_ryo']} | ✨ 自信: {'⭐' * st.session_state['confidence_level']}")
-    st.progress(safe_favor) 
+    st.progress(safe_favor)
     st.divider()
 
-    # --- メインエリア（画像とセリフ） ---
     col_img, col_chat = st.columns([0.4, 0.6])
-    
     with col_img:
         image_path = "bg_image.jpg"
         if os.path.exists(image_path):
             st.image(image_path)
         else:
-            st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400", 
-                     caption="氷室 涼 (イメージ)")
+            st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400", caption="氷室 涼 (イメージ)")
 
-with col_chat:
+    with col_chat:
         st.markdown(f"### 氷室 涼")
-        
-        # 1. 私語モード（FREE_CHAT）
         if st.session_state['game_state'] == 'FREE_CHAT':
-            if st.session_state['free_chat_history']:
-                for m in st.session_state['free_chat_history']:
-                    # roleが「氷室」か「assistant」か「あなた」か「user」かにかかわらず表示
-                    label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
-                    st.write(f"**{label}**: {m['content']}")
-            else:
-                st.info("「……何か、言いたいことでもあるんですか？」")
-
-        # 2. メインプレイ（MAIN_PLAY）
+            for m in st.session_state['free_chat_history']:
+                label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
+                st.write(f"**{label}**: {m['content']}")
         else:
-            # 履歴が存在するか確認
-            if st.session_state.get('conversation_history') and len(st.session_state['conversation_history']) > 0:
-                # 最新のデータを取得
-                latest_data = st.session_state['conversation_history'][-1]
-                
-                # 'character_speech' または 'speech' というキーでセリフを探す
-                speech = latest_data.get('character_speech') or latest_data.get('speech')
-                
-                if speech:
-                    st.info(speech)
-                else:
-                    # キーが見つからない場合、データ構造をそのまま表示してデバッグ（開発用）
-                    st.warning("セリフデータの読み込みに失敗しました。")
-                    # st.write(latest_data) # ←もし表示されないなら、この行のコメントアウトを外すと中身が見えます
+            if st.session_state.get('conversation_history'):
+                latest = st.session_state['conversation_history'][-1]
+                speech = latest.get('character_speech') or latest.get('speech') or "……"
+                st.info(speech)
             else:
-                # 履歴がまだない時の初期セリフ
                 st.info("「……お疲れ様です。まだ残っていたんですか」")
 
-   
-
     st.divider()
-    
-    # --- 操作エリア ---
-    # 1. 選択肢ボタン（MAIN_PLAY時のみ）
+
+    # 操作エリア
     if st.session_state['game_state'] == 'MAIN_PLAY':
         if st.session_state['conversation_history']:
-            choices = st.session_state['conversation_history'][-1]['choices']
+            choices = st.session_state['conversation_history'][-1].get('choices', [])
             for i, c in enumerate(choices):
                 if st.button(c['text'], key=f"btn_{st.session_state['turn_count']}_{i}", use_container_width=True):
-                    # スコア計算
-                    score = c['score']
-                    change = score if score <= 0 else int(score * {0: 0.5, 1: 1.0, 2: 1.5, 3: 2.0}.get(st.session_state['confidence_level'], 1.0))
-                    st.session_state['favor_ryo'] += change
+                    score = c.get('score', 0)
+                    # 自信Lvによるボーナス
+                    mult = {0: 0.5, 1: 1.0, 2: 1.5, 3: 2.0}.get(st.session_state['confidence_level'], 1.0)
+                    st.session_state['favor_ryo'] += int(score * mult) if score > 0 else score
                     st.session_state['turn_count'] += 1
                     
-                    # 私語モード判定
                     max_c, ryo_msg = get_free_chat_config(st.session_state['favor_ryo'])
                     if max_c > 0:
                         st.session_state['game_state'] = 'FREE_CHAT'
@@ -195,7 +169,6 @@ with col_chat:
                         st.session_state['game_state'] = 'CONVERSATION_LOAD'
                     st.rerun()
 
-    # 2. 私語入力欄（FREE_CHAT時のみ）
     elif st.session_state['game_state'] == 'FREE_CHAT':
         max_c, _ = get_free_chat_config(st.session_state['favor_ryo'])
         if st.session_state['free_chat_count'] < max_c:
@@ -214,30 +187,14 @@ with col_chat:
                 st.session_state['game_state'] = 'CONVERSATION_LOAD'
             st.rerun()
 
-
-    # 私語入力欄
-    elif st.session_state['game_state'] == 'FREE_CHAT':
-        max_c, _ = get_free_chat_config(st.session_state['favor_ryo'])
-        if st.session_state['free_chat_count'] < max_c:
-            chat_input = st.chat_input("話しかける...")
-            if chat_input:
-                st.session_state['free_chat_history'].append({"role": "あなた", "content": chat_input})
-                res = generate_free_chat_response(chat_input)
-                st.session_state['free_chat_history'].append({"role": "氷室", "content": res})
-                st.session_state['free_chat_count'] += 1
-                st.rerun()
-        
-        if st.button("次の展開へ進む", type="primary", use_container_width=True):
-            if st.session_state['turn_count'] >= 3:
-                st.session_state['game_state'] = 'RESULT'
-            else:
-                st.session_state['game_state'] = 'CONVERSATION_LOAD'
-            st.rerun()
-
-# 4. リザルト
+# --- 4. 結果画面 ---
 elif st.session_state['game_state'] == 'RESULT':
     st.header("攻略完了")
-    st.metric("氷室からの信頼度", st.session_state['favor_ryo'])
+    st.metric("信頼度", st.session_state['favor_ryo'])
     if st.button("最初から"):
         st.session_state.clear()
         st.rerun()
+
+
+
+   
