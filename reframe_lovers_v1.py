@@ -93,7 +93,6 @@ def generate_main_scenario():
     except: return None
 
 # --- UI表示 ---
-st.title("🏙️ Reframe Lovers")
 
 # 【修正①】設定・CSV画面の表示ロジックを安定化
 # CONVERSATION_LOAD以降になるまで、この画面を維持します
