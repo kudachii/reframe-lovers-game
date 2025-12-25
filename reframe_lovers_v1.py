@@ -152,25 +152,37 @@ elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
     st.markdown("<style>.block-container { padding-top: 1rem; }</style>", unsafe_allow_html=True)
 
     # 横並びレイアウト（画像4 : チャット6）
+    # カラムの隙間を最小限にして、上辺を揃えるCSS
+    st.markdown("""
+        <style>
+        [data-testid="column"] { align-self: flex-start !important; }
+        </style>
+        """, unsafe_allow_html=True)
+
     col_img, col_chat = st.columns([0.4, 0.6])
 
     with col_img:
+        # 1. 画像を一番上に配置
         image_path = "bg_image.jpg"
         if os.path.exists(image_path):
             st.image(image_path, use_container_width=True)
         else:
             st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400", use_container_width=True)
-        # --- ここに追加！画像の下にメッセージを表示 ---
+        
+        # 2. 画像のすぐ下に「考え中」メッセージ
         if st.session_state['game_state'] == 'FREE_CHAT':
-             # 回数制限に達していない時だけ表示
              max_c, _ = get_free_chat_config(st.session_state['favor_ryo'])
              if st.session_state.get('free_chat_count', 0) < max_c:
                  st.caption("⏳ 氷室が言葉を選んでいます......")
+
     with col_chat:
-        st.markdown(f"##### 氷室 涼")
-        chat_container = st.container(height=300)
+        # 3. チャット欄（名前をコンテナの中に入れるか、高さを調整して開始位置を合わせる）
+        # 名前表示（画像の上辺と合わせるため、余計な改行を入れない）
+        st.markdown("<div style='margin-top: -10px;'><b>氷室 涼</b></div>", unsafe_allow_html=True)
+        
+        # コンテナの高さを画像とバランスが取れる315px程度に設定
+        chat_container = st.container(height=315)
         with chat_container:
-            # ここが重要！withの中身を正しく字下げしています
             if st.session_state['game_state'] == 'FREE_CHAT':
                 for m in st.session_state['free_chat_history']:
                     label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
