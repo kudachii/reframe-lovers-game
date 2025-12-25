@@ -62,14 +62,26 @@ def generate_free_chat_response(user_input):
         return model.generate_content(prompt).text
     except: return "……今は話せません。"
 
-# --- AI生成（メイン） ---
+# --- AI生成（メイン）のプロンプトを硬派に修正 ---
 def generate_main_scenario():
     name = st.session_state['player_name']
     gender = st.session_state['player_gender']
     conf = st.session_state['confidence_level']
     favor = st.session_state['favor_ryo']
     num = {0: 2, 1: 3, 2: 4, 3: 5}.get(conf, 2)
-    prompt = f"氷室涼として{gender}の{name}に接して。好感度{favor}。自信Lv{conf}。JSON(character_speech, choices:[{{text, score}}])で出力。選択肢は{num}個。"
+    
+    # 性格設定をより具体的に
+    prompt = f"""あなたは氷室涼（ひむろ りょう）です。
+    【性格】32歳、戦略コンサルタント。極めて合理的で冷徹。仕事に厳しく、無駄を嫌う。
+    【状況】部下（または同僚）の{name}({gender})と会話中。好感度{favor}/100。
+    【口調】基本は「……」「ふむ。それで？」といった無愛想な敬語。
+    【自信Lvによる変化】
+    - 自信Lv.{conf}が低いと、あなたは相手を「無能」と見なし、より厳しく接します。
+    - 自信Lvが高いと、わずかに相手の能力を認め、対等に話そうとします。
+    
+    JSON(character_speech, choices:[{{text, score}}])で出力。選択肢は{num}個。
+    ※弱気な態度は一切禁止です。常に優位に立ってください。"""
+    
     try:
         model = genai.GenerativeModel(get_best_model())
         res = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
