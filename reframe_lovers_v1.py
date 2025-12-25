@@ -115,8 +115,13 @@ elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
 
 # 3. メイン・私語プレイ画面
 elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
+    # 【修正②】プログレスバーのエラー回避
+    # min(max(値, 0.0), 1.0) を使うことで、0〜100の範囲外になってもエラーを防ぎます
+    favor_val = st.session_state['favor_ryo'] / 100.0
+    safe_favor = min(max(favor_val, 0.0), 1.0)
+    
     st.write(f"❤️ 信頼度: {st.session_state['favor_ryo']} | ✨ 自信: {'⭐' * st.session_state['confidence_level']}")
-    st.progress(st.session_state['favor_ryo'] / 100.0)
+    st.progress(safe_favor) 
     st.divider()
 
     col_img, col_chat = st.columns([0.4, 0.6])
