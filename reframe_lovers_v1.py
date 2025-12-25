@@ -189,21 +189,25 @@ elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
                     if st.button(c['text'], key=f"btn_{st.session_state['turn_count']}_{i}", use_container_width=True):
                         score = c.get('score', 0)
                         
-                        # --- ここから修正 ---
-                        # 倍率を抑える（自信があっても1.3倍、自信がないと0.7倍に減衰）
-                        mult = {0: 0.7, 1: 1.0, 2: 1.15, 3: 1.3}.get(st.session_state['confidence_level'], 1.0)
+                        # --- 信頼度計算のさらなる引き締め ---
+                        # 倍率をもっとタイトに（自信があっても微増、自信がないとしっかり減点）
+                        mult = {0: 0.5, 1: 0.8, 2: 1.0, 3: 1.2}.get(st.session_state['confidence_level'], 1.0)
                         
                         if score > 0:
-                            # 良い選択肢でも、自信Lvが低いと評価が下がる
                             change = int(score * mult)
                         else:
-                            # 悪い選択肢（マイナス）は、自信に関係なくそのまま下がる
+                            # ミスした時のダメージはそのまま（エリートはミスを許さない）
                             change = score 
                         
-                        st.session_state['favor_ryo'] += change
-                        # --- ここまで修正 ---
+                        # 合算して、0〜100の間に収める（100%を突破させない！）
+                        new_favor = st.session_state['favor_ryo'] + change
+                        st.session_state['favor_ryo'] = min(max(new_favor, 0), 100)
                         
                         st.session_state['turn_count'] += 1
+                        
+                        # --- 私語モード判定への影響 ---
+                        # 信頼度が80以上にならないと、私語（FREE_CHAT）にはさせない
+                        max_c, ryo_msg = get_free_chat_config(st.session_state['favor_ryo'])
                         
                         # 私語モード判定（以下、既存のコードと同じ）
                         max_c, ryo_msg = get_free_chat_config(st.session_state['favor_ryo'])
