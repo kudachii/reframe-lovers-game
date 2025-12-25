@@ -164,7 +164,7 @@ elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
         # チャット欄の高さを「画像の高さ」に合わせるため、少し低め（300px）に設定
         chat_container = st.container(height=300)
         with chat_container:
-            elif st.session_state['game_state'] == 'FREE_CHAT':
+elif st.session_state['game_state'] == 'FREE_CHAT':
         # 現在の信頼度から、話せる最大回数を取得
         max_c, ryo_msg = get_free_chat_config(st.session_state['favor_ryo'])
         current_c = st.session_state['free_chat_count']
