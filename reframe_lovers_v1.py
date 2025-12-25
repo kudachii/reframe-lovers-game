@@ -131,63 +131,60 @@ elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
             st.rerun()
 
 elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
-    # --- 1. サイドバー（設定・ステータス） ---
+    # --- 1. サイドバー（ステータス） ---
     with st.sidebar:
         st.title("🏙️ Reframe Lovers")
-        st.divider()
-        st.subheader("📊 Status")
-        favor_val = st.session_state['favor_ryo']
-        st.metric("❤️ 信頼度", f"{favor_val}%")
-        st.progress(min(max(favor_val / 100.0, 0.0), 1.0))
+        st.metric("❤️ 信頼度", f"{st.session_state['favor_ryo']}%")
         st.write(f"✨ 自信: {'⭐' * st.session_state['confidence_level']}")
         st.divider()
-        # ギャル先生メッセージ
-        if st.session_state['confidence_level'] <= 1:
-            st.info("🌺 ギャル先生:「日記で自分をアゲてこ！✨」")
-        else:
-            st.success("🌺 ギャル先生:「マジいい感じ！🔥」")
+        # ギャル先生
+        st.info("🌺 ギャル先生:「自分を信じて、氷室にぶつかっていこ！✨」")
         if st.button("タイトルに戻る"):
             st.session_state.clear()
             st.rerun()
 
-    # --- 2. メイン画面（垂直コンパクトレイアウト） ---
-    
-    # ① 画像：高さを抑えて全体が見えるようにする
-    image_path = "bg_image.jpg"
-    # widthを調整（例：300px）することで、縦長になりすぎるのを防ぎます
-    col_left, col_mid, col_right = st.columns([1, 2, 1]) # 中央に寄せる
-    with col_mid:
+    # --- 2. メイン画面：画像とチャットを「横並び」にして高さを節約 ---
+    col_img, col_chat = st.columns([0.45, 0.55]) # 左右の比率を調整
+
+    with col_img:
+        # 画像：上半身が見えるように配置
+        image_path = "bg_image.jpg"
         if os.path.exists(image_path):
             st.image(image_path, use_container_width=True)
         else:
+            # 代替画像（ビジネスマンの上半身）
             st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400", 
-                     caption="氷室 涼", use_container_width=True)
+                     use_container_width=True)
 
-    # ② チャット欄：高さを250pxに抑える（スクロール可能）
-    st.markdown(f"##### 氷室 涼") # 少し文字を小さく
-    chat_container = st.container(height=250) 
-    
-    with chat_container:
-        if st.session_state['game_state'] == 'FREE_CHAT':
-            for m in st.session_state['free_chat_history']:
-                label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
-                st.chat_message("assistant" if label == "氷室" else "user").write(m['content'])
-        else:
-            if st.session_state.get('conversation_history'):
-                latest = st.session_state['conversation_history'][-1]
-                speech = latest.get('character_speech') or latest.get('speech') or "……。"
-                st.chat_message("assistant").write(speech)
+    with col_chat:
+        # チャット欄：画像と同じくらいの高さ（400px程度）に固定
+        st.markdown(f"##### 氷室 涼")
+        chat_container = st.container(height=380) # 画像の高さに合わせる
+        
+        with chat_container:
+            if st.session_state['game_state'] == 'FREE_CHAT':
+                for m in st.session_state['free_chat_history']:
+                    label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
+                    st.chat_message("assistant" if label == "氷室" else "user").write(m['content'])
             else:
-                st.chat_message("assistant").write("「……お疲れ様です。まだ残っていたんですか」")
+                if st.session_state.get('conversation_history'):
+                    latest = st.session_state['conversation_history'][-1]
+                    speech = latest.get('character_speech') or latest.get('speech') or "……。"
+                    st.chat_message("assistant").write(speech)
+                else:
+                    st.chat_message("assistant").write("「……お疲れ様です。まだ残っていたんですか」")
 
-    # ③ 操作エリア（ボタンを横に並べて高さを節約）
+    st.divider()
+
+    # --- 3. 操作エリア（最下部） ---
+    # 選択肢や入力欄をここに配置することで、視線が上（画像）から下（操作）へ自然に流れます
     if st.session_state['game_state'] == 'MAIN_PLAY':
         if st.session_state['conversation_history']:
             choices = st.session_state['conversation_history'][-1].get('choices', [])
-            # 選択肢が多い場合は2列にするなどして高さを抑える
-            cols = st.columns(len(choices))
+            # 選択肢を2つずつ横に並べてコンパクトに
+            cols = st.columns(2)
             for i, c in enumerate(choices):
-                with cols[i]:
+                with cols[i % 2]:
                     if st.button(c['text'], key=f"btn_{st.session_state['turn_count']}_{i}", use_container_width=True):
                         score = c.get('score', 0)
                         mult = {0: 0.5, 1: 1.0, 2: 1.5, 3: 2.0}.get(st.session_state['confidence_level'], 1.0)
@@ -203,6 +200,22 @@ elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
                             st.toast(ryo_msg)
                             st.session_state['game_state'] = 'CONVERSATION_LOAD'
                         st.rerun()
+
+    elif st.session_state['game_state'] == 'FREE_CHAT':
+        chat_input = st.chat_input("氷室に話しかける...")
+        if chat_input:
+            st.session_state['free_chat_history'].append({"role": "あなた", "content": chat_input})
+            res = generate_free_chat_response(chat_input)
+            st.session_state['free_chat_history'].append({"role": "氷室", "content": res})
+            st.session_state['free_chat_count'] += 1
+            st.rerun()
+        
+        if st.button("次の展開へ進む", type="primary", use_container_width=True):
+            if st.session_state['turn_count'] >= 3:
+                st.session_state['game_state'] = 'RESULT'
+            else:
+                st.session_state['game_state'] = 'CONVERSATION_LOAD'
+            st.rerun()
 
     elif st.session_state['game_state'] == 'FREE_CHAT':
         # 入力欄とボタン
