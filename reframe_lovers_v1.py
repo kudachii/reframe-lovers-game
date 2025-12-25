@@ -165,63 +165,35 @@ elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
         # チャット欄の高さを「画像の高さ」に合わせるため、少し低め（300px）に設定
         chat_container = st.container(height=300)
         with chat_container:
-            if st.session_state['game_state'] == 'FREE_CHAT':
-                for m in st.session_state['free_chat_history']:
-                    label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
-                    st.chat_message("assistant" if label == "氷室" else "user").write(m['content'])
-            else:
-                if st.session_state.get('conversation_history'):
-                    latest = st.session_state['conversation_history'][-1]
-                    speech = latest.get('character_speech') or latest.get('speech') or "……。"
-                    st.chat_message("assistant").write(speech)
-                else:
-                    st.chat_message("assistant").write("「……お疲れ様です」")
+            elif st.session_state['game_state'] == 'FREE_CHAT':
+        # 現在の信頼度から、話せる最大回数を取得
+        max_c, ryo_msg = get_free_chat_config(st.session_state['favor_ryo'])
+        current_c = st.session_state['free_chat_count']
 
-    # --- 3. 操作エリア（ボタンを横に並べて高さを節約） ---
-    st.markdown("---") # 細い線
-    if st.session_state['game_state'] == 'MAIN_PLAY':
-        if st.session_state['conversation_history']:
-            choices = st.session_state['conversation_history'][-1].get('choices', [])
-            # ボタンを1列に最大2個並べて、縦幅をとらないようにする
-            cols = st.columns(2)
-            for i, c in enumerate(choices):
-                with cols[i % 2]:
-                    if st.button(c['text'], key=f"btn_{st.session_state['turn_count']}_{i}", use_container_width=True):
-                        score = c.get('score', 0)
-                        
-                        # --- 信頼度計算のさらなる引き締め ---
-                        # 倍率をもっとタイトに（自信があっても微増、自信がないとしっかり減点）
-                        mult = {0: 0.5, 1: 0.8, 2: 1.0, 3: 1.2}.get(st.session_state['confidence_level'], 1.0)
-                        
-                        if score > 0:
-                            change = int(score * mult)
-                        else:
-                            # ミスした時のダメージはそのまま（エリートはミスを許さない）
-                            change = score 
-                        
-                        # 合算して、0〜100の間に収める（100%を突破させない！）
-                        new_favor = st.session_state['favor_ryo'] + change
-                        st.session_state['favor_ryo'] = min(max(new_favor, 0), 100)
-                        
-                        st.session_state['turn_count'] += 1
-                        
-                        # --- 私語モード判定への影響 ---
-                        # 信頼度が80以上にならないと、私語（FREE_CHAT）にはさせない
-                        max_c, ryo_msg = get_free_chat_config(st.session_state['favor_ryo'])
-                        
-                        # 私語モード判定（以下、既存のコードと同じ）
-                        max_c, ryo_msg = get_free_chat_config(st.session_state['favor_ryo'])
-                        # ...（続く）
-                        
-                        max_c, ryo_msg = get_free_chat_config(st.session_state['favor_ryo'])
-                        if max_c > 0:
-                            st.session_state['game_state'] = 'FREE_CHAT'
-                            st.session_state['free_chat_history'] = [{"role": "氷室", "content": ryo_msg}]
-                            st.session_state['free_chat_count'] = 0
-                        else:
-                            st.toast(ryo_msg)
-                            st.session_state['game_state'] = 'CONVERSATION_LOAD'
-                        st.rerun()
+        # 回数制限の表示
+        st.write(f"💬 残り会話回数: {max_c - current_c} / {max_c}")
+
+        if current_c < max_c:
+            # 制限内なら入力欄を出す
+            chat_input = st.chat_input("氷室に話しかける...")
+            if chat_input:
+                st.session_state['free_chat_history'].append({"role": "あなた", "content": chat_input})
+                res = generate_free_chat_response(chat_input)
+                st.session_state['free_chat_history'].append({"role": "氷室", "content": res})
+                # 回数をカウントアップ！
+                st.session_state['free_chat_count'] += 1
+                st.rerun()
+        else:
+            # 制限を超えたら「打ち切りメッセージ」を出す
+            st.warning("氷室：「……これ以上は、業務に支障が出ます。続きはまた今度です」")
+
+        # 「次へ」ボタン
+        if st.button("次の展開へ進む", type="primary", use_container_width=True):
+            if st.session_state['turn_count'] >= 3:
+                st.session_state['game_state'] = 'RESULT'
+            else:
+                st.session_state['game_state'] = 'CONVERSATION_LOAD'
+            st.rerun()
 
     elif st.session_state['game_state'] == 'FREE_CHAT':
         chat_input = st.chat_input("氷室に話しかける...")
