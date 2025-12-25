@@ -130,83 +130,72 @@ elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
             st.session_state['game_state'] = 'MAIN_PLAY'
             st.rerun()
 
-# --- 3. メインプレイ & 私語画面 ---
 elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
-    # --- ステータス表示をサイドバーへ移動 ---
-with st.sidebar:
-    st.title("📊 Status")
-    
-    # 信頼度（❤️）の表示
-    favor_val = st.session_state['favor_ryo']
-    st.metric("❤️ 氷室からの信頼度", f"{favor_val}%")
-    st.progress(min(max(favor_val / 100.0, 0.0), 1.0))
-    
-    st.divider()
-    
-    # 自信（⭐）の表示
-    st.subheader("✨ あなたの自信")
-    st.write(f"Level: {'⭐' * st.session_state['confidence_level']}")
-    
-    # おまけ：サイドバーにギャル先生からの応援メッセージを入れる
-    if st.session_state['confidence_level'] < 2:
-        st.info("ギャル先生：『まずは日記で自分をアゲてこ！✨』")
-    else:
-        st.success("ギャル先生：『いい感じ！氷室をビビらせちゃいな！🔥』")
+    # --- 1. サイドバー（スマホ版では左上の「>」で開閉可能） ---
+    with st.sidebar:
+        st.title("📊 Status")
+        favor_val = st.session_state['favor_ryo']
+        st.metric("❤️ 氷室からの信頼度", f"{favor_val}%")
+        st.progress(min(max(favor_val / 100.0, 0.0), 1.0))
+        
+        st.subheader(f"✨ 自信: {'⭐' * st.session_state['confidence_level']}")
+        
+        st.divider()
+        # ギャル先生からのメンターメッセージ [2025-12-21 追加要素]
+        if st.session_state['confidence_level'] <= 1:
+            st.info("🌺 ギャル先生:「まずは日記で自分をアゲてこ！氷室の冷たさは、アンタの伸びしろっしょ！✨」")
+        else:
+            st.success("🌺 ギャル先生:「ヤバい、マジで自信ついてきてんじゃん！氷室も内心ビビってるはずだよ、イケイケ〜！🔥」")
 
-    st.divider()
-    
-    if st.button("タイトルに戻る"):
-        st.session_state.clear()
-        st.rerun()
+        if st.button("タイトルに戻る"):
+            st.session_state.clear()
+            st.rerun()
 
+    # --- 2. メイン画面（画像とチャット） ---
     col_img, col_chat = st.columns([0.4, 0.6])
+
     with col_img:
         image_path = "bg_image.jpg"
         if os.path.exists(image_path):
             st.image(image_path)
         else:
-            st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400", caption="氷室 涼 (イメージ)")
+            # 代替画像
+            st.image("https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400", caption="氷室 涼")
 
     with col_chat:
         st.markdown(f"### 氷室 涼")
         
-        # 高さを 400px に固定し、中身が溢れたらスクロールするように設定
+        # 【修正】チャットコンテナの高さを固定
         chat_container = st.container(height=400)
         
         with chat_container:
-            # 1. 私語モード（FREE_CHAT）
             if st.session_state['game_state'] == 'FREE_CHAT':
-                if st.session_state['free_chat_history']:
-                    for m in st.session_state['free_chat_history']:
-                        label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
-                        # チャットっぽくメッセージを表示
-                        st.chat_message("assistant" if label == "氷室" else "user").write(m['content'])
-                else:
-                    st.info("「……何か、言いたいことでもあるんですか？」")
-
-            # 2. メインプレイ（MAIN_PLAY）
+                for m in st.session_state['free_chat_history']:
+                    label = "氷室" if m['role'] in ['氷室', 'assistant'] else "あなた"
+                    st.chat_message("assistant" if label == "氷室" else "user").write(m['content'])
             else:
                 if st.session_state.get('conversation_history'):
-                    latest_data = st.session_state['conversation_history'][-1]
-                    speech = latest_data.get('character_speech') or latest_data.get('speech') or "……"
+                    latest = st.session_state['conversation_history'][-1]
+                    speech = latest.get('character_speech') or latest.get('speech') or "……。"
                     st.chat_message("assistant").write(speech)
                 else:
                     st.chat_message("assistant").write("「……お疲れ様です。まだ残っていたんですか」")
 
     st.divider()
 
-    # 操作エリア
+    # --- 3. 操作エリア ---
     if st.session_state['game_state'] == 'MAIN_PLAY':
         if st.session_state['conversation_history']:
             choices = st.session_state['conversation_history'][-1].get('choices', [])
             for i, c in enumerate(choices):
                 if st.button(c['text'], key=f"btn_{st.session_state['turn_count']}_{i}", use_container_width=True):
+                    # 好感度計算
                     score = c.get('score', 0)
-                    # 自信Lvによるボーナス
                     mult = {0: 0.5, 1: 1.0, 2: 1.5, 3: 2.0}.get(st.session_state['confidence_level'], 1.0)
                     st.session_state['favor_ryo'] += int(score * mult) if score > 0 else score
                     st.session_state['turn_count'] += 1
                     
+                    # 私語モード判定
                     max_c, ryo_msg = get_free_chat_config(st.session_state['favor_ryo'])
                     if max_c > 0:
                         st.session_state['game_state'] = 'FREE_CHAT'
@@ -216,6 +205,24 @@ with st.sidebar:
                         st.toast(ryo_msg)
                         st.session_state['game_state'] = 'CONVERSATION_LOAD'
                     st.rerun()
+
+    elif st.session_state['game_state'] == 'FREE_CHAT':
+        max_c, _ = get_free_chat_config(st.session_state['favor_ryo'])
+        if st.session_state['free_chat_count'] < max_c:
+            chat_input = st.chat_input("話しかける...")
+            if chat_input:
+                st.session_state['free_chat_history'].append({"role": "あなた", "content": chat_input})
+                res = generate_free_chat_response(chat_input)
+                st.session_state['free_chat_history'].append({"role": "氷室", "content": res})
+                st.session_state['free_chat_count'] += 1
+                st.rerun()
+        
+        if st.button("次の展開へ進む", type="primary", use_container_width=True):
+            if st.session_state['turn_count'] >= 3:
+                st.session_state['game_state'] = 'RESULT'
+            else:
+                st.session_state['game_state'] = 'CONVERSATION_LOAD'
+            st.rerun()
 
     elif st.session_state['game_state'] == 'FREE_CHAT':
         max_c, _ = get_free_chat_config(st.session_state['favor_ryo'])
