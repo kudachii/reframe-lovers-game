@@ -132,12 +132,32 @@ elif st.session_state['game_state'] == 'CONVERSATION_LOAD':
 
 # --- 3. メインプレイ & 私語画面 ---
 elif st.session_state['game_state'] in ['MAIN_PLAY', 'FREE_CHAT']:
-    # ステータス表示
-    favor_val = st.session_state['favor_ryo'] / 100.0
-    safe_favor = min(max(favor_val, 0.0), 1.0)
-    st.write(f"❤️ 信頼度: {st.session_state['favor_ryo']} | ✨ 自信: {'⭐' * st.session_state['confidence_level']}")
-    st.progress(safe_favor)
+    # --- ステータス表示をサイドバーへ移動 ---
+with st.sidebar:
+    st.title("📊 Status")
+    
+    # 信頼度（❤️）の表示
+    favor_val = st.session_state['favor_ryo']
+    st.metric("❤️ 氷室からの信頼度", f"{favor_val}%")
+    st.progress(min(max(favor_val / 100.0, 0.0), 1.0))
+    
     st.divider()
+    
+    # 自信（⭐）の表示
+    st.subheader("✨ あなたの自信")
+    st.write(f"Level: {'⭐' * st.session_state['confidence_level']}")
+    
+    # おまけ：サイドバーにギャル先生からの応援メッセージを入れる
+    if st.session_state['confidence_level'] < 2:
+        st.info("ギャル先生：『まずは日記で自分をアゲてこ！✨』")
+    else:
+        st.success("ギャル先生：『いい感じ！氷室をビビらせちゃいな！🔥』")
+
+    st.divider()
+    
+    if st.button("タイトルに戻る"):
+        st.session_state.clear()
+        st.rerun()
 
     col_img, col_chat = st.columns([0.4, 0.6])
     with col_img:
